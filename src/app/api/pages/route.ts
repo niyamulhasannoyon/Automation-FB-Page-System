@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
-import connectToDatabase from "@/lib/db";
-import ConnectedPage from "@/models/ConnectedPage";
+import { AppStorage } from "@/lib/storage";
 
 export async function GET() {
   try {
-    await connectToDatabase();
-    const pages = await ConnectedPage.find({}).sort({ updatedAt: -1 });
-
+    const pages = await AppStorage.getAllPages();
     return NextResponse.json({ pages }, { status: 200 });
   } catch (error: unknown) {
     console.error("Error in GET /api/pages:", error);

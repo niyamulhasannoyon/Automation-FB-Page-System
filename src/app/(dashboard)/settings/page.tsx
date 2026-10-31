@@ -33,7 +33,9 @@ export default function SettingsPage() {
       : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
   const webhookUrl = `${appUrl}/api/webhook`;
-  const verifyToken = "fb_auto_verify_token_secure_2025";
+  const verifyToken =
+    process.env.NEXT_PUBLIC_META_WEBHOOK_VERIFY_TOKEN ||
+    "fb_auto_verify_token_secure_2025";
 
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -216,7 +218,7 @@ export default function SettingsPage() {
                   Test Webhook Verification Challenge
                 </h4>
                 <p className="text-[11px] text-slate-400">
-                  Simulates Meta's GET verification handshake to ensure the endpoint responds properly
+                  Simulates Meta&apos;s GET verification handshake to ensure the endpoint responds properly
                 </p>
               </div>
 

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectToDatabase from "@/lib/db";
-import ConnectedPage from "@/models/ConnectedPage";
+import { AppStorage } from "@/lib/storage";
 import { MetaGraphService } from "@/lib/meta-graph";
 
 export async function POST(req: NextRequest) {
@@ -18,61 +17,67 @@ export async function POST(req: NextRequest) {
     const cleanPageId = String(pageId).trim();
     const cleanToken = String(pageAccessToken).trim();
 
-    // 1. Verify credentials against Meta Graph API
+    // 1. Verify credentials against Meta Graph API or simulate for demo tokens
     let metaProfile;
-    try {
-      metaProfile = await MetaGraphService.verifyPageCredentials(
-        cleanPageId,
-        cleanToken
-      );
-    } catch (graphErr: unknown) {
-      const err = graphErr as Error;
-      return NextResponse.json(
-        {
-          error: `Meta Graph API Verification Failed: ${err.message}`,
+    const isDemoToken =
+      cleanToken.startsWith("demo_") || cleanPageId.startsWith("demo_");
+
+    if (isDemoToken) {
+      metaProfile = {
+        id: cleanPageId,
+        name: `Demo Page ${cleanPageId.slice(-4)}`,
+        picture: {
+          data: {
+            url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80",
+          },
         },
-        { status: 400 }
-      );
+      };
+    } else {
+      try {
+        metaProfile = await MetaGraphService.verifyPageCredentials(
+          cleanPageId,
+          cleanToken
+        );
+      } catch (graphErr: unknown) {
+        const err = graphErr as Error;
+        return NextResponse.json(
+          {
+            error: `Meta Graph API Verification Failed: ${err.message}`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // 2. Automatically subscribe Page to our app webhook
     let isSubscribed = false;
-    try {
-      const subResult = await MetaGraphService.subscribePageToWebhook(
-        cleanPageId,
-        cleanToken
-      );
-      isSubscribed = subResult.success;
-    } catch (subErr) {
-      console.warn("Could not auto-subscribe page to webhook:", subErr);
-      isSubscribed = false;
+    if (isDemoToken) {
+      isSubscribed = true;
+    } else {
+      try {
+        const subResult = await MetaGraphService.subscribePageToWebhook(
+          cleanPageId,
+          cleanToken
+        );
+        isSubscribed = subResult.success;
+      } catch (subErr) {
+        console.warn("Could not auto-subscribe page to webhook:", subErr);
+        isSubscribed = false;
+      }
     }
 
-    // 3. Connect to Database and upsert page record
-    await connectToDatabase();
-
+    // 3. Upsert page record in storage
     const pagePicture =
       metaProfile.picture?.data?.url ||
       `https://graph.facebook.com/v21.0/${cleanPageId}/picture?type=large`;
 
-    const updatedPage = await ConnectedPage.findOneAndUpdate(
-      { pageId: cleanPageId },
-      {
-        $set: {
-          pageName: metaProfile.name,
-          pagePicture: pagePicture,
-          pageAccessToken: cleanToken,
-          isWebhookSubscribed: isSubscribed,
-        },
-        $setOnInsert: {
-          autoReplyEnabled: true,
-          defaultInboxReply:
-            "Hello! Thanks for reaching out. We received your message and will get back to you shortly.",
-          rules: [],
-        },
-      },
-      { new: true, upsert: true, runValidators: true }
-    );
+    const updatedPage = await AppStorage.upsertPage({
+      pageId: cleanPageId,
+      pageName: metaProfile.name,
+      pagePicture,
+      pageAccessToken: cleanToken,
+      isWebhookSubscribed: isSubscribed,
+    });
 
     return NextResponse.json(
       {
@@ -85,7 +90,10 @@ export async function POST(req: NextRequest) {
     console.error("Error in /api/pages/connect:", error);
     const err = error as Error;
     return NextResponse.json(
-      { error: err.message || "An unexpected error occurred while connecting the page." },
+      {
+        error:
+          err.message || "An unexpected error occurred while connecting the page.",
+      },
       { status: 500 }
     );
   }

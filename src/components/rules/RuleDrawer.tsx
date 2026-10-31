@@ -158,7 +158,7 @@ export function RuleDrawer() {
                 Public Comment Reply
               </span>
               <span className="text-[10px] text-slate-400 font-normal">
-                Posts directly beneath user's comment
+                Posts directly beneath user&apos;s comment
               </span>
             </label>
             <textarea

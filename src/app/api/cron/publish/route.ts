@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectToDatabase from "@/lib/db";
-import ScheduledPost from "@/models/ScheduledPost";
-import ConnectedPage from "@/models/ConnectedPage";
+import { AppStorage } from "@/lib/storage";
 import { MetaGraphService } from "@/lib/meta-graph";
 
 export async function GET(req: NextRequest) {
@@ -22,16 +20,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    await connectToDatabase();
-
     const now = new Date();
     // Find all pending posts whose scheduled time is now or in the past
-    const pendingPosts = await ScheduledPost.find({
-      status: "pending",
-      scheduledTime: { $lte: now },
-    })
-      .sort({ scheduledTime: 1 })
-      .limit(30);
+    const pendingPosts = await AppStorage.getPendingPostsDue(now);
 
     if (pendingPosts.length === 0) {
       return NextResponse.json({
@@ -53,52 +44,65 @@ export async function GET(req: NextRequest) {
     };
 
     for (const post of pendingPosts) {
+      const postId = post._id || "";
       try {
-        const page = await ConnectedPage.findOne({ pageId: post.pageId });
+        const page = await AppStorage.getPage(post.pageId);
 
         if (!page || !page.pageAccessToken) {
-          post.status = "failed";
-          post.errorLog =
-            "Connected Facebook Page not found or access token missing.";
-          await post.save();
+          await AppStorage.updatePost(postId, {
+            status: "failed",
+            errorLog: "Connected Facebook Page not found or access token missing.",
+          });
           results.failed++;
           results.details.push({
-            id: post._id.toString(),
+            id: postId,
             pageId: post.pageId,
             status: "failed",
-            error: post.errorLog,
+            error: "Connected Facebook Page not found or access token missing.",
           });
           continue;
         }
 
-        // Publish to Facebook via Meta Graph API
-        const fbResult = await MetaGraphService.publishPost(
-          post.pageId,
-          post.caption,
-          post.imageUrl,
-          page.pageAccessToken
-        );
+        // Publish to Facebook via Meta Graph API (or simulated for demo tokens)
+        let fbResult: { id: string; post_id?: string };
+        const isDemo = page.pageAccessToken.startsWith("demo_");
 
-        post.status = "published";
-        post.fbPostId = fbResult.post_id || fbResult.id;
-        post.errorLog = "";
-        await post.save();
+        if (isDemo) {
+          fbResult = {
+            id: `cron_demo_${Date.now()}`,
+            post_id: `${post.pageId}_cron_${Date.now()}`,
+          };
+        } else {
+          fbResult = await MetaGraphService.publishPost(
+            post.pageId,
+            post.caption,
+            post.imageUrl,
+            page.pageAccessToken
+          );
+        }
+
+        await AppStorage.updatePost(postId, {
+          status: "published",
+          fbPostId: fbResult.post_id || fbResult.id,
+          errorLog: "",
+        });
 
         results.published++;
         results.details.push({
-          id: post._id.toString(),
+          id: postId,
           pageId: post.pageId,
           status: "published",
         });
       } catch (err: unknown) {
         const error = err as Error;
-        post.status = "failed";
-        post.errorLog = error.message;
-        await post.save();
+        await AppStorage.updatePost(postId, {
+          status: "failed",
+          errorLog: error.message,
+        });
 
         results.failed++;
         results.details.push({
-          id: post._id.toString(),
+          id: postId,
           pageId: post.pageId,
           status: "failed",
           error: error.message,

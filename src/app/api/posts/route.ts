@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectToDatabase from "@/lib/db";
-import ScheduledPost from "@/models/ScheduledPost";
+import { AppStorage } from "@/lib/storage";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,11 +13,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    await connectToDatabase();
-
-    const posts = await ScheduledPost.find({ pageId })
-      .sort({ scheduledTime: -1, createdAt: -1 })
-      .limit(50);
+    const posts = await AppStorage.getPosts(pageId);
 
     return NextResponse.json({ posts }, { status: 200 });
   } catch (error: unknown) {

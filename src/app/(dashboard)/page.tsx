@@ -290,7 +290,7 @@ export default function OverviewDashboardPage() {
               {(!activePage?.rules || activePage.rules.length === 0) ? (
                 <div className="p-8 text-center text-xs text-slate-400">
                   <MessageSquareCode className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                  No automation rules configured yet. Click "Create Keyword Rule" to get started.
+                  No automation rules configured yet. Click &quot;Create Keyword Rule&quot; to get started.
                 </div>
               ) : (
                 <div className="space-y-3">

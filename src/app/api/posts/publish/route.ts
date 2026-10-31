@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectToDatabase from "@/lib/db";
-import ConnectedPage from "@/models/ConnectedPage";
-import ScheduledPost from "@/models/ScheduledPost";
+import { AppStorage } from "@/lib/storage";
 import { MetaGraphService } from "@/lib/meta-graph";
 
 export async function POST(req: NextRequest) {
@@ -23,9 +21,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectToDatabase();
-
-    const page = await ConnectedPage.findOne({ pageId });
+    const page = await AppStorage.getPage(pageId);
     if (!page) {
       return NextResponse.json(
         { error: "Connected page not found in database." },
@@ -40,7 +36,7 @@ export async function POST(req: NextRequest) {
     if (isScheduled) {
       const scheduledDate = new Date(scheduledTime);
 
-      const newScheduledPost = await ScheduledPost.create({
+      const newScheduledPost = await AppStorage.createPost({
         pageId,
         caption: caption || "",
         imageUrl: imageUrl || "",
@@ -58,33 +54,42 @@ export async function POST(req: NextRequest) {
       );
     } else {
       // Instant Publish to Facebook Page via Meta Graph API
-      let fbResult;
-      try {
-        fbResult = await MetaGraphService.publishPost(
-          pageId,
-          caption || "",
-          imageUrl || undefined,
-          page.pageAccessToken
-        );
-      } catch (fbErr: unknown) {
-        const err = fbErr as Error;
-        // Also save failed attempt to post history
-        await ScheduledPost.create({
-          pageId,
-          caption: caption || "",
-          imageUrl: imageUrl || "",
-          scheduledTime: new Date(),
-          status: "failed",
-          errorLog: err.message,
-        });
+      let fbResult: { id: string; post_id?: string };
+      const isDemo = page.pageAccessToken.startsWith("demo_");
 
-        return NextResponse.json(
-          { error: `Facebook Graph API Error: ${err.message}` },
-          { status: 502 }
-        );
+      if (isDemo) {
+        fbResult = {
+          id: `demo_post_${Date.now()}`,
+          post_id: `${pageId}_demo_${Date.now()}`,
+        };
+      } else {
+        try {
+          fbResult = await MetaGraphService.publishPost(
+            pageId,
+            caption || "",
+            imageUrl || undefined,
+            page.pageAccessToken
+          );
+        } catch (fbErr: unknown) {
+          const err = fbErr as Error;
+          // Also save failed attempt to post history
+          await AppStorage.createPost({
+            pageId,
+            caption: caption || "",
+            imageUrl: imageUrl || "",
+            scheduledTime: new Date(),
+            status: "failed",
+            errorLog: err.message,
+          });
+
+          return NextResponse.json(
+            { error: `Facebook Graph API Error: ${err.message}` },
+            { status: 502 }
+          );
+        }
       }
 
-      const publishedPost = await ScheduledPost.create({
+      const publishedPost = await AppStorage.createPost({
         pageId,
         caption: caption || "",
         imageUrl: imageUrl || "",

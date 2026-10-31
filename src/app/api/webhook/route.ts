@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectToDatabase from "@/lib/db";
-import ConnectedPage from "@/models/ConnectedPage";
+import { AppStorage } from "@/lib/storage";
 import { MetaGraphService } from "@/lib/meta-graph";
 import { findMatchingRule } from "@/lib/utils";
 import { MetaWebhookPayload } from "@/types";
@@ -56,13 +55,11 @@ export async function POST(req: NextRequest) {
  * Internal processor for webhook entries across multiple pages
  */
 async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
-  await connectToDatabase();
-
   for (const entry of entries) {
     const incomingPageId = entry.id;
     if (!incomingPageId) continue;
 
-    const page = await ConnectedPage.findOne({ pageId: incomingPageId });
+    const page = await AppStorage.getPage(incomingPageId);
     if (!page || !page.autoReplyEnabled || !page.pageAccessToken) {
       continue;
     }
@@ -88,21 +85,29 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
             if (commentId && commentText) {
               const matchedRule = findMatchingRule(commentText, page.rules);
 
+              const isDemo = page.pageAccessToken.startsWith("demo_");
+
               if (matchedRule) {
                 // Public Comment Reply
                 if (matchedRule.commentReply && matchedRule.commentReply.trim()) {
-                  tasks.push(
-                    MetaGraphService.replyPublicComment(
-                      commentId,
-                      matchedRule.commentReply.trim(),
-                      page.pageAccessToken
-                    ).catch((err) =>
-                      console.error(
-                        `[Webhook] Public reply failed for comment ${commentId}:`,
-                        err.message
+                  if (isDemo) {
+                    console.log(
+                      `[Webhook Demo] Simulated public reply to comment ${commentId}: "${matchedRule.commentReply.trim()}"`
+                    );
+                  } else {
+                    tasks.push(
+                      MetaGraphService.replyPublicComment(
+                        commentId,
+                        matchedRule.commentReply.trim(),
+                        page.pageAccessToken
+                      ).catch((err) =>
+                        console.error(
+                          `[Webhook] Public reply failed for comment ${commentId}:`,
+                          err.message
+                        )
                       )
-                    )
-                  );
+                    );
+                  }
                 }
 
                 // Private Message Reply
@@ -111,19 +116,25 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
                   matchedRule.inboxReply &&
                   matchedRule.inboxReply.trim()
                 ) {
-                  tasks.push(
-                    MetaGraphService.sendPrivateCommentReply(
-                      incomingPageId,
-                      commentId,
-                      matchedRule.inboxReply.trim(),
-                      page.pageAccessToken
-                    ).catch((err) =>
-                      console.error(
-                        `[Webhook] Private inbox reply failed for comment ${commentId}:`,
-                        err.message
+                  if (isDemo) {
+                    console.log(
+                      `[Webhook Demo] Simulated private DM to comment ${commentId}: "${matchedRule.inboxReply.trim()}"`
+                    );
+                  } else {
+                    tasks.push(
+                      MetaGraphService.sendPrivateCommentReply(
+                        incomingPageId,
+                        commentId,
+                        matchedRule.inboxReply.trim(),
+                        page.pageAccessToken
+                      ).catch((err) =>
+                        console.error(
+                          `[Webhook] Private inbox reply failed for comment ${commentId}:`,
+                          err.message
+                        )
                       )
-                    )
-                  );
+                    );
+                  }
                 }
               }
             }
@@ -134,6 +145,7 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
 
     // 2. Process Messenger Automation
     if (Array.isArray(entry.messaging)) {
+      const isDemo = page.pageAccessToken.startsWith("demo_");
       for (const msgItem of entry.messaging) {
         // Skip echo messages sent by the page/app
         if (msgItem.message?.is_echo) {
@@ -152,36 +164,48 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
           const matchedRule = findMatchingRule(userText, page.rules);
 
           if (matchedRule && matchedRule.inboxReply && matchedRule.inboxReply.trim()) {
-            tasks.push(
-              MetaGraphService.sendDirectMessengerReply(
-                incomingPageId,
-                senderPsid,
-                matchedRule.inboxReply.trim(),
-                page.pageAccessToken
-              ).catch((err) =>
-                console.error(
-                  `[Webhook] Messenger rule reply failed for PSID ${senderPsid}:`,
-                  err.message
+            if (isDemo) {
+              console.log(
+                `[Webhook Demo] Simulated Messenger rule reply to PSID ${senderPsid}: "${matchedRule.inboxReply.trim()}"`
+              );
+            } else {
+              tasks.push(
+                MetaGraphService.sendDirectMessengerReply(
+                  incomingPageId,
+                  senderPsid,
+                  matchedRule.inboxReply.trim(),
+                  page.pageAccessToken
+                ).catch((err) =>
+                  console.error(
+                    `[Webhook] Messenger rule reply failed for PSID ${senderPsid}:`,
+                    err.message
+                  )
                 )
-              )
-            );
+              );
+            }
           } else if (
             page.defaultInboxReply &&
             page.defaultInboxReply.trim().length > 0
           ) {
-            tasks.push(
-              MetaGraphService.sendDirectMessengerReply(
-                incomingPageId,
-                senderPsid,
-                page.defaultInboxReply.trim(),
-                page.pageAccessToken
-              ).catch((err) =>
-                console.error(
-                  `[Webhook] Messenger default fallback reply failed for PSID ${senderPsid}:`,
-                  err.message
+            if (isDemo) {
+              console.log(
+                `[Webhook Demo] Simulated Messenger fallback reply to PSID ${senderPsid}: "${page.defaultInboxReply.trim()}"`
+              );
+            } else {
+              tasks.push(
+                MetaGraphService.sendDirectMessengerReply(
+                  incomingPageId,
+                  senderPsid,
+                  page.defaultInboxReply.trim(),
+                  page.pageAccessToken
+                ).catch((err) =>
+                  console.error(
+                    `[Webhook] Messenger default fallback reply failed for PSID ${senderPsid}:`,
+                    err.message
+                  )
                 )
-              )
-            );
+              );
+            }
           }
         }
       }

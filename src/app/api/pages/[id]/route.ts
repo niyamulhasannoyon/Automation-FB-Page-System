@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectToDatabase from "@/lib/db";
-import ConnectedPage from "@/models/ConnectedPage";
-import ScheduledPost from "@/models/ScheduledPost";
+import { AppStorage } from "@/lib/storage";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -11,11 +9,7 @@ interface RouteParams {
 export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    await connectToDatabase();
-
-    const page = await ConnectedPage.findOne({
-      $or: [{ pageId: id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }],
-    });
+    const page = await AppStorage.getPage(id);
 
     if (!page) {
       return NextResponse.json({ error: "Page not found." }, { status: 404 });
@@ -34,8 +28,6 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     const body = await req.json();
 
-    await connectToDatabase();
-
     const allowedUpdates = [
       "autoReplyEnabled",
       "defaultInboxReply",
@@ -50,13 +42,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       }
     }
 
-    const updatedPage = await ConnectedPage.findOneAndUpdate(
-      {
-        $or: [{ pageId: id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }],
-      },
-      { $set: updatePayload },
-      { new: true, runValidators: true }
-    );
+    const updatedPage = await AppStorage.updatePage(id, updatePayload);
 
     if (!updatedPage) {
       return NextResponse.json({ error: "Page not found." }, { status: 404 });
@@ -77,18 +63,11 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    await connectToDatabase();
+    const success = await AppStorage.deletePage(id);
 
-    const page = await ConnectedPage.findOneAndDelete({
-      $or: [{ pageId: id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }],
-    });
-
-    if (!page) {
+    if (!success) {
       return NextResponse.json({ error: "Page not found." }, { status: 404 });
     }
-
-    // Clean up related scheduled posts
-    await ScheduledPost.deleteMany({ pageId: page.pageId });
 
     return NextResponse.json(
       { message: "Page and associated post schedules removed successfully." },
