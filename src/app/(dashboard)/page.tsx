@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { IScheduledPost } from "@/types";
+import { LiveActivityFeed } from "@/components/dashboard/LiveActivityFeed";
 
 export default function OverviewDashboardPage() {
   const activePage = useAppStore((state) => state.activePage);
@@ -349,6 +350,9 @@ export default function OverviewDashboardPage() {
           </Card>
         </div>
       </div>
+
+      {/* Live Automation Activity Feed */}
+      <LiveActivityFeed />
     </div>
   );
 }

@@ -5,13 +5,11 @@ import { MetaGraphService } from "@/lib/meta-graph";
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const pageId = searchParams.get("pageId");
+    let pageId = searchParams.get("pageId");
 
     if (!pageId) {
-      return NextResponse.json(
-        { error: "Query parameter 'pageId' is required." },
-        { status: 400 }
-      );
+      const pages = await AppStorage.getAllPages();
+      pageId = pages[0]?.pageId || "10928491829384";
     }
 
     const orders = await AppStorage.getOrders(pageId);

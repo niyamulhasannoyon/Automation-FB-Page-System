@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppStorage } from "@/lib/storage";
 import { MetaGraphService } from "@/lib/meta-graph";
+import { maskToken } from "@/lib/crypto";
+import { getSessionUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
@@ -71,7 +73,11 @@ export async function POST(req: NextRequest) {
       metaProfile.picture?.data?.url ||
       `https://graph.facebook.com/v21.0/${cleanPageId}/picture?type=large`;
 
+    const sessionUser = await getSessionUser(req);
+    const userId = sessionUser?.userId || "user_demo";
+
     const updatedPage = await AppStorage.upsertPage({
+      userId,
       pageId: cleanPageId,
       pageName: metaProfile.name,
       pagePicture,
@@ -79,10 +85,15 @@ export async function POST(req: NextRequest) {
       isWebhookSubscribed: isSubscribed,
     });
 
+    const maskedPage = {
+      ...updatedPage,
+      pageAccessToken: maskToken(updatedPage.pageAccessToken),
+    };
+
     return NextResponse.json(
       {
         message: "Facebook Page successfully connected and verified!",
-        page: updatedPage,
+        page: maskedPage,
       },
       { status: 200 }
     );

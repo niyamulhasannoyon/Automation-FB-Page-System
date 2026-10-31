@@ -8,8 +8,15 @@ export async function GET() {
   return NextResponse.json(
     {
       status: "operational",
-      version: "1.0.0",
+      version: "2.0.0",
       graphApiVersion: "v21.0",
+      security: {
+        tokenEncryption: "AES-256-GCM",
+        tokenMasking: true,
+        sessionAuth: "JWT HttpOnly Cookie",
+        webhookHmacVerification: "SHA-256",
+        idempotencyDeduplication: true,
+      },
       storage: {
         mode: isFallback ? "local_persistent_store" : "mongodb_active",
         location: isFallback ? ".data/db.json" : "MongoDB Connection Pool",
@@ -22,6 +29,9 @@ export async function GET() {
         posts: "/api/posts",
         orders: "/api/orders",
         products: "/api/products",
+        logs: "/api/logs",
+        upload: "/api/upload",
+        auth: "/api/auth",
         database: "/api/settings/database",
       },
     },

@@ -12,6 +12,7 @@ export interface IAutomationRule {
 
 export interface IConnectedPage {
   _id?: string;
+  userId?: string;
   pageId: string;
   pageName: string;
   pagePicture?: string;
@@ -150,5 +151,50 @@ export interface IOrder {
   notes?: string;
   createdAt?: string | Date;
   updatedAt?: string | Date;
+}
+
+// User & Auth Types
+export interface IUser {
+  _id?: string;
+  id?: string;
+  email: string;
+  name: string;
+  password?: string;
+  role: "admin" | "merchant";
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+}
+
+export interface UserSession {
+  userId: string;
+  email: string;
+  name: string;
+  role: "admin" | "merchant";
+}
+
+// Automation Live Logs & Deduplication Types
+export type AutomationEventType =
+  | "comment"
+  | "message"
+  | "order"
+  | "stock_inquiry"
+  | "ai_reply"
+  | "post_publish";
+
+export type AutomationEventStatus = "success" | "failed" | "duplicate";
+
+export interface IAutomationLog {
+  _id?: string;
+  pageId: string;
+  eventId: string; // comment_id or message.mid for deduplication
+  eventType: AutomationEventType;
+  senderId?: string;
+  senderName?: string;
+  inputMessage: string;
+  replyMessage: string;
+  handledBy: string;
+  status: AutomationEventStatus;
+  error?: string;
+  createdAt?: string | Date;
 }
 

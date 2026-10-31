@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppStorage } from "@/lib/storage";
+import { maskToken } from "@/lib/crypto";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -15,7 +16,13 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Page not found." }, { status: 404 });
     }
 
-    return NextResponse.json({ page }, { status: 200 });
+    // Security: Mask pageAccessToken before returning to frontend
+    const maskedPage = {
+      ...page,
+      pageAccessToken: maskToken(page.pageAccessToken),
+    };
+
+    return NextResponse.json({ page: maskedPage }, { status: 200 });
   } catch (error: unknown) {
     const err = error as Error;
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -48,8 +55,13 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Page not found." }, { status: 404 });
     }
 
+    const maskedPage = {
+      ...updatedPage,
+      pageAccessToken: maskToken(updatedPage.pageAccessToken),
+    };
+
     return NextResponse.json(
-      { message: "Page settings updated successfully.", page: updatedPage },
+      { message: "Page settings updated successfully.", page: maskedPage },
       { status: 200 }
     );
   } catch (error: unknown) {

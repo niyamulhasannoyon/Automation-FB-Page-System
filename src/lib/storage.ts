@@ -5,13 +5,27 @@ import ConnectedPage from "@/models/ConnectedPage";
 import ScheduledPost from "@/models/ScheduledPost";
 import Product from "@/models/Product";
 import Order from "@/models/Order";
-import { IConnectedPage, IScheduledPost, IProduct, IOrder } from "@/types";
+import User from "@/models/User";
+import AutomationLog from "@/models/AutomationLog";
+import {
+  IConnectedPage,
+  IScheduledPost,
+  IProduct,
+  IOrder,
+  IUser,
+  IAutomationLog,
+  AutomationEventType,
+  AutomationEventStatus,
+} from "@/types";
+import { encryptToken, decryptToken } from "./crypto";
 
 interface LocalStoreData {
   pages: IConnectedPage[];
   posts: IScheduledPost[];
   products: IProduct[];
   orders: IOrder[];
+  users: IUser[];
+  logs: IAutomationLog[];
 }
 
 const DATA_DIR = path.join(process.cwd(), ".data");
@@ -30,8 +44,42 @@ function toPage(doc: unknown): IConnectedPage {
     d && typeof d.toObject === "function"
       ? d.toObject()
       : (doc as Record<string, unknown>);
+  const rawToken = String(obj?.pageAccessToken || "");
   return {
     ...(obj as unknown as IConnectedPage),
+    _id: obj?._id ? String(obj._id) : undefined,
+    userId: obj?.userId ? String(obj.userId) : "user_demo",
+    pageAccessToken: decryptToken(rawToken),
+  };
+}
+
+function toUser(doc: unknown): IUser {
+  const d = doc as {
+    toObject?: () => Record<string, unknown>;
+    _id?: { toString: () => string };
+  };
+  const obj =
+    d && typeof d.toObject === "function"
+      ? d.toObject()
+      : (doc as Record<string, unknown>);
+  return {
+    ...(obj as unknown as IUser),
+    _id: obj?._id ? String(obj._id) : undefined,
+    id: obj?._id ? String(obj._id) : (obj?.id as string),
+  };
+}
+
+function toLog(doc: unknown): IAutomationLog {
+  const d = doc as {
+    toObject?: () => Record<string, unknown>;
+    _id?: { toString: () => string };
+  };
+  const obj =
+    d && typeof d.toObject === "function"
+      ? d.toObject()
+      : (doc as Record<string, unknown>);
+  return {
+    ...(obj as unknown as IAutomationLog),
     _id: obj?._id ? String(obj._id) : undefined,
   };
 }
@@ -193,6 +241,46 @@ export const SEED_ORDERS: IOrder[] = [
   },
 ];
 
+export const SEED_USER: IUser = {
+  _id: "user_demo",
+  id: "user_demo",
+  email: "demo@autopage.io",
+  name: "Demo Merchant (Live)",
+  password: "demo123456",
+  role: "merchant",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+export const SEED_LOGS: IAutomationLog[] = [
+  {
+    _id: "log_seed_1",
+    pageId: "10928491829384",
+    eventId: "mid_demo_1001",
+    eventType: "order",
+    senderId: "demo_psid_101",
+    senderName: "রাকিব হাসান",
+    inputMessage: "আমার নাম রাকিব হাসান, ফোন 01712345678, ধানমন্ডি ৪/এ, ১টা পাঞ্জাবি লাগবে",
+    replyMessage: "🎉 ধন্যবাদ রাকিব হাসান! আপনার অর্ডারটি (ORD-1001) সফলভাবে কনফার্ম করা হয়েছে!",
+    handledBy: "Layer 1: Auto Order Extractor",
+    status: "success",
+    createdAt: new Date(Date.now() - 7200000).toISOString(),
+  },
+  {
+    _id: "log_seed_2",
+    pageId: "10928491829384",
+    eventId: "mid_demo_1002",
+    eventType: "stock_inquiry",
+    senderId: "demo_psid_102",
+    senderName: "তানভির আহমেদ",
+    inputMessage: "ইয়ারবাডস এর দাম কত এবং স্টক আছে?",
+    replyMessage: "আমাদের \"Wireless Earbuds Pro\" স্টকে আছে (8 পিস এভেইলেবল) এবং এর মূল্য ৳2,450 ✅",
+    handledBy: "Layer 2: Real-Time Stock & Price Checker",
+    status: "success",
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+];
+
 function ensureLocalStore(): LocalStoreData {
   try {
     if (!fs.existsSync(DATA_DIR)) {
@@ -219,6 +307,14 @@ function ensureLocalStore(): LocalStoreData {
         parsed.posts = [];
         modified = true;
       }
+      if (!Array.isArray(parsed.users) || parsed.users.length === 0) {
+        parsed.users = [SEED_USER];
+        modified = true;
+      }
+      if (!Array.isArray(parsed.logs)) {
+        parsed.logs = [...SEED_LOGS];
+        modified = true;
+      }
 
       if (modified) {
         fs.writeFileSync(STORE_PATH, JSON.stringify(parsed, null, 2), "utf-8");
@@ -234,6 +330,7 @@ function ensureLocalStore(): LocalStoreData {
   const seedData: LocalStoreData = {
     pages: [
       {
+        userId: "user_demo",
         pageId: "10928491829384",
         pageName: "TechFlow Digital (Live Demo)",
         pagePicture:
@@ -311,6 +408,8 @@ function ensureLocalStore(): LocalStoreData {
     ],
     products: SEED_PRODUCTS,
     orders: SEED_ORDERS,
+    users: [SEED_USER],
+    logs: [...SEED_LOGS],
   };
 
   try {
@@ -359,7 +458,7 @@ async function checkMongoConnection(): Promise<boolean> {
 export class AppStorage {
   // ==================== PAGES ====================
 
-  static async getAllPages(): Promise<IConnectedPage[]> {
+  static async getAllPages(userId?: string): Promise<IConnectedPage[]> {
     const hasMongo = await checkMongoConnection();
     if (hasMongo) {
       try {
@@ -367,11 +466,23 @@ export class AppStorage {
         if (count === 0) {
           const store = ensureLocalStore();
           if (store.pages.length > 0) {
-            const toInsert = store.pages.map(({ _id: _unused, ...rest }) => rest);
+            const toInsert = store.pages.map(({ _id: _unused, ...rest }) => ({
+              ...rest,
+              pageAccessToken: encryptToken(rest.pageAccessToken),
+            }));
             await ConnectedPage.insertMany(toInsert);
           }
         }
-        const pages = await ConnectedPage.find({}).sort({ updatedAt: -1 });
+        const filter = userId
+          ? {
+              $or: [
+                { userId },
+                { userId: "user_demo" },
+                { userId: { $exists: false } },
+              ],
+            }
+          : {};
+        const pages = await ConnectedPage.find(filter).sort({ updatedAt: -1 });
         return pages.map(toPage);
       } catch (err) {
         console.error("[Storage] Mongo getAllPages error, using fallback:", err);
@@ -379,11 +490,20 @@ export class AppStorage {
     }
 
     const store = ensureLocalStore();
-    return [...store.pages].sort((a, b) => {
-      const tA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-      const tB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-      return tB - tA;
-    });
+    return [...store.pages]
+      .filter((p) => {
+        if (!userId) return true;
+        return (
+          p.userId === userId ||
+          p.userId === "user_demo" ||
+          !p.userId
+        );
+      })
+      .sort((a, b) => {
+        const tA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const tB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return tB - tA;
+      });
   }
 
   static async getPage(pageId: string): Promise<IConnectedPage | null> {
@@ -412,6 +532,10 @@ export class AppStorage {
   static async upsertPage(
     pageData: Partial<IConnectedPage> & { pageId: string; pageName: string }
   ): Promise<IConnectedPage> {
+    const tokenToStore = pageData.pageAccessToken
+      ? encryptToken(pageData.pageAccessToken)
+      : undefined;
+
     const hasMongo = await checkMongoConnection();
     if (hasMongo) {
       try {
@@ -419,9 +543,10 @@ export class AppStorage {
           { pageId: pageData.pageId },
           {
             $set: {
+              userId: pageData.userId || "user_demo",
               pageName: pageData.pageName,
               pagePicture: pageData.pagePicture,
-              pageAccessToken: pageData.pageAccessToken,
+              ...(tokenToStore ? { pageAccessToken: tokenToStore } : {}),
               isWebhookSubscribed: Boolean(pageData.isWebhookSubscribed),
             },
             $setOnInsert: {
@@ -449,6 +574,7 @@ export class AppStorage {
       const existing = store.pages[existingIndex];
       const updated: IConnectedPage = {
         ...existing,
+        userId: pageData.userId || existing.userId || "user_demo",
         pageName: pageData.pageName,
         pagePicture: pageData.pagePicture ?? existing.pagePicture,
         pageAccessToken: pageData.pageAccessToken ?? existing.pageAccessToken,
@@ -462,6 +588,7 @@ export class AppStorage {
     } else {
       const newPage: IConnectedPage = {
         _id: `page_${Date.now()}`,
+        userId: pageData.userId || "user_demo",
         pageId: pageData.pageId,
         pageName: pageData.pageName,
         pagePicture: pageData.pagePicture || "",
@@ -1067,6 +1194,189 @@ export class AppStorage {
       return true;
     }
     return false;
+  }
+
+  // ==================== USERS & MULTI-TENANCY ====================
+
+  static async getUserByEmail(email: string): Promise<IUser | null> {
+    const cleanEmail = email.toLowerCase().trim();
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const user = await User.findOne({ email: cleanEmail });
+        if (user) return toUser(user);
+      } catch (err) {
+        console.error("[Storage] Mongo getUserByEmail error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const found = store.users?.find((u) => u.email.toLowerCase() === cleanEmail);
+    return found || null;
+  }
+
+  static async getUserById(id: string): Promise<IUser | null> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const user = await User.findById(id);
+        if (user) return toUser(user);
+      } catch (err) {
+        console.error("[Storage] Mongo getUserById error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const found = store.users?.find((u) => u._id === id || u.id === id);
+    return found || null;
+  }
+
+  static async createUser(userData: {
+    email: string;
+    name: string;
+    password: string;
+    role?: "admin" | "merchant";
+  }): Promise<IUser> {
+    const cleanEmail = userData.email.toLowerCase().trim();
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const created = await User.create({
+          email: cleanEmail,
+          name: userData.name.trim(),
+          password: userData.password,
+          role: userData.role || "merchant",
+        });
+        return toUser(created);
+      } catch (err) {
+        console.error("[Storage] Mongo createUser error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const newUser: IUser = {
+      _id: `user_${Date.now()}`,
+      id: `user_${Date.now()}`,
+      email: cleanEmail,
+      name: userData.name.trim(),
+      password: userData.password,
+      role: userData.role || "merchant",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    if (!Array.isArray(store.users)) {
+      store.users = [];
+    }
+    store.users.unshift(newUser);
+    writeLocalStore(store);
+    return newUser;
+  }
+
+  // ==================== AUTOMATION LOGS & IDEMPOTENCY ====================
+
+  static async isEventProcessed(eventId: string): Promise<boolean> {
+    if (!eventId || typeof eventId !== "string") return false;
+    const cleanEventId = eventId.trim();
+
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const count = await AutomationLog.countDocuments({ eventId: cleanEventId });
+        return count > 0;
+      } catch (err) {
+        console.error("[Storage] Mongo isEventProcessed error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    return Boolean(store.logs?.some((l) => l.eventId === cleanEventId));
+  }
+
+  static async logAutomationEvent(logData: {
+    pageId: string;
+    eventId: string;
+    eventType: AutomationEventType;
+    senderId?: string;
+    senderName?: string;
+    inputMessage: string;
+    replyMessage: string;
+    handledBy: string;
+    status: AutomationEventStatus;
+    error?: string;
+  }): Promise<IAutomationLog> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const created = await AutomationLog.create({
+          pageId: logData.pageId,
+          eventId: logData.eventId,
+          eventType: logData.eventType,
+          senderId: logData.senderId || "",
+          senderName: logData.senderName || "Customer",
+          inputMessage: logData.inputMessage || "",
+          replyMessage: logData.replyMessage || "",
+          handledBy: logData.handledBy || "System",
+          status: logData.status || "success",
+          error: logData.error || "",
+        });
+        return toLog(created);
+      } catch (err) {
+        console.error("[Storage] Mongo logAutomationEvent error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const newLog: IAutomationLog = {
+      _id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      pageId: logData.pageId,
+      eventId: logData.eventId,
+      eventType: logData.eventType,
+      senderId: logData.senderId || "",
+      senderName: logData.senderName || "Customer",
+      inputMessage: logData.inputMessage || "",
+      replyMessage: logData.replyMessage || "",
+      handledBy: logData.handledBy || "System",
+      status: logData.status || "success",
+      error: logData.error || "",
+      createdAt: new Date().toISOString(),
+    };
+
+    if (!Array.isArray(store.logs)) {
+      store.logs = [];
+    }
+    store.logs.unshift(newLog);
+    if (store.logs.length > 200) {
+      store.logs = store.logs.slice(0, 200);
+    }
+    writeLocalStore(store);
+    return newLog;
+  }
+
+  static async getAutomationLogs(
+    pageId?: string,
+    limit: number = 50
+  ): Promise<IAutomationLog[]> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const filter = pageId ? { pageId } : {};
+        const logs = await AutomationLog.find(filter)
+          .sort({ createdAt: -1 })
+          .limit(limit);
+        return logs.map(toLog);
+      } catch (err) {
+        console.error("[Storage] Mongo getAutomationLogs error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    let logs = store.logs || [];
+    if (pageId) {
+      logs = logs.filter((l) => l.pageId === pageId);
+    }
+    return [...logs]
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, limit);
   }
 
   // ==================== SYSTEM & DIAGNOSTICS ====================

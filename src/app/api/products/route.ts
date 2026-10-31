@@ -4,13 +4,11 @@ import { AppStorage } from "@/lib/storage";
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const pageId = searchParams.get("pageId");
+    let pageId = searchParams.get("pageId");
 
     if (!pageId) {
-      return NextResponse.json(
-        { error: "Query parameter 'pageId' is required." },
-        { status: 400 }
-      );
+      const pages = await AppStorage.getAllPages();
+      pageId = pages[0]?.pageId || "10928491829384";
     }
 
     const products = await AppStorage.getProducts(pageId);

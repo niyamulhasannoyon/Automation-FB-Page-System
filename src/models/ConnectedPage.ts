@@ -23,6 +23,12 @@ const AutomationRuleSchema = new Schema<IAutomationRule>(
 
 const ConnectedPageSchema = new Schema<ConnectedPageDocument>(
   {
+    userId: {
+      type: String,
+      index: true,
+      default: "user_demo",
+      trim: true,
+    },
     pageId: {
       type: String,
       required: true,

@@ -13,6 +13,7 @@ import {
   Globe,
   Radio,
   ShoppingBag,
+  Activity,
 } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,7 @@ const NAV_ITEMS = [
     badge: null,
   },
   {
-    label: "Orders & Inventory",
+    label: "Orders & Stock",
     href: "/orders",
     icon: ShoppingBag,
     badge: "AI Bot",
@@ -41,6 +42,12 @@ const NAV_ITEMS = [
     href: "/posts",
     icon: CalendarDays,
     badge: null,
+  },
+  {
+    label: "Live Activity Logs",
+    href: "/logs",
+    icon: Activity,
+    badge: "Live",
   },
   {
     label: "Settings & Database",

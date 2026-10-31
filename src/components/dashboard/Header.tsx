@@ -4,7 +4,7 @@ import React from "react";
 import { PageSwitcher } from "./PageSwitcher";
 import { useAppStore } from "@/store/useAppStore";
 import { Switch } from "@/components/common/Switch";
-import { RefreshCw, Radio, ShieldCheck, ShieldAlert } from "lucide-react";
+import { RefreshCw, Radio, ShieldCheck, ShieldAlert, LogOut } from "lucide-react";
 
 export function Header() {
   const activePage = useAppStore((state) => state.activePage);
@@ -71,6 +71,17 @@ export function Header() {
           <RefreshCw
             className={`w-4 h-4 ${isLoading ? "animate-spin text-blue-400" : ""}`}
           />
+        </button>
+
+        <button
+          onClick={async () => {
+            await fetch("/api/auth/logout", { method: "POST" });
+            window.location.href = "/login";
+          }}
+          title="Sign Out"
+          className="p-2 rounded-xl bg-white/5 hover:bg-rose-500/10 text-slate-400 hover:text-rose-300 border border-white/10 hover:border-rose-500/20 transition-colors cursor-pointer"
+        >
+          <LogOut className="w-4 h-4" />
         </button>
       </div>
     </header>

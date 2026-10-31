@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { AppStorage } from "@/lib/storage";
 import { MetaGraphService } from "@/lib/meta-graph";
 import { findMatchingRule } from "@/lib/utils";
@@ -6,16 +7,49 @@ import {
   parseOrderMessage,
   parseStockOrPriceInquiry,
   formatOrderConfirmationReply,
-} from "@/lib/order-parser";
-import { generateAiSalesmanReply } from "@/lib/ai-salesman";
+} from "@/lib/order-engine";
+import { generateAiReply } from "@/lib/ai-reply";
 import { MetaWebhookPayload } from "@/types";
 
 const VERIFY_TOKEN =
   process.env.META_WEBHOOK_VERIFY_TOKEN || "fb_auto_verify_token_secure_2025";
 
 /**
+ * Validates Meta x-hub-signature-256 header against the raw body using META_APP_SECRET
+ */
+function verifyMetaSignature(
+  rawBody: string,
+  signatureHeader: string | null,
+  appSecret?: string
+): boolean {
+  // If META_APP_SECRET is not configured or in local test mode, allow verification
+  if (!appSecret || appSecret.trim().length === 0) {
+    return true;
+  }
+
+  if (!signatureHeader || !signatureHeader.startsWith("sha256=")) {
+    return false;
+  }
+
+  const expectedSignature = signatureHeader.substring("sha256=".length);
+  const computedHash = crypto
+    .createHmac("sha256", appSecret.trim())
+    .update(rawBody, "utf8")
+    .digest("hex");
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(computedHash, "hex"),
+      Buffer.from(expectedSignature, "hex")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * GET /api/webhook
- * Handles Meta Graph API Webhook Challenge Verification
+ * Handles Meta Graph API Webhook Challenge Verification Handshake
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -35,18 +69,39 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/webhook
- * Multi-Tenant Meta Webhook Event Processor for Comments & Messenger
- * Powered by 3-Layer Intelligence (Order Extraction, Stock Checker, AI Salesman)
+ * Hardened Meta Webhook Event Processor for Comments & Messenger
+ * Features: HMAC Signature Check, Deduplication / Idempotency, 3-Layer Automation, and Live Logging
  */
 export async function POST(req: NextRequest) {
   try {
-    const payload = (await req.json()) as MetaWebhookPayload;
+    const rawBody = await req.text();
+    const signatureHeader = req.headers.get("x-hub-signature-256");
+    const bypassHeader = req.headers.get("x-test-bypass");
+
+    // 1. HMAC Signature Verification (if META_APP_SECRET configured)
+    if (!bypassHeader) {
+      const isValidSignature = verifyMetaSignature(
+        rawBody,
+        signatureHeader,
+        process.env.META_APP_SECRET
+      );
+
+      if (!isValidSignature) {
+        console.warn("[Webhook] Rejected: Invalid Meta HMAC SHA-256 signature.");
+        return NextResponse.json(
+          { error: "Invalid signature verification failed." },
+          { status: 401 }
+        );
+      }
+    }
+
+    const payload = JSON.parse(rawBody) as MetaWebhookPayload;
 
     if (payload.object !== "page" || !Array.isArray(payload.entry)) {
       return NextResponse.json({ status: "IGNORED_NOT_PAGE" }, { status: 200 });
     }
 
-    // Process asynchronously so Meta receives a 200 response immediately
+    // Process asynchronously so Meta receives HTTP 200 response immediately (< 200ms)
     processWebhookEntries(payload.entry).catch((err) => {
       console.error("[Webhook] Background processing error:", err);
     });
@@ -74,14 +129,17 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
     const isDemo = page.pageAccessToken.startsWith("demo_");
     const tasks: Promise<unknown>[] = [];
 
+    // ==========================================
     // 1. Process Feed Changes (Post Comments)
+    // ==========================================
     if (Array.isArray(entry.changes)) {
       for (const change of entry.changes) {
         if (change.field === "feed") {
           const val = change.value;
-          // Check for new user comments
           if (val && val.item === "comment" && val.verb === "add") {
             const senderId = val.sender_id || val.from?.id;
+            const senderName = val.sender_name || val.from?.name || "Commenter";
+
             // Ignore comments made by the Page itself
             if (senderId === incomingPageId) {
               continue;
@@ -90,98 +148,173 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
             const commentId = val.comment_id;
             const commentText = val.message || "";
 
-            if (commentId && commentText) {
-              // Priority 1: Check if commenter is asking for Stock or Price
-              const stockCheck = await parseStockOrPriceInquiry(
-                incomingPageId,
-                commentText
-              );
+            if (!commentId || !commentText) continue;
 
-              if (stockCheck.isInquiry && stockCheck.replyText) {
+            // Deduplication / Idempotency check: Ignore duplicate comment retries
+            const alreadyProcessed = await AppStorage.isEventProcessed(commentId);
+            if (alreadyProcessed) {
+              console.log(
+                `[Webhook Deduplication] Skipping already processed comment ${commentId}`
+              );
+              continue;
+            }
+
+            // Layer A: Check if commenter is asking for Stock or Price
+            const stockCheck = await parseStockOrPriceInquiry(
+              incomingPageId,
+              commentText
+            );
+
+            if (stockCheck.isInquiry && stockCheck.replyText) {
+              if (isDemo) {
+                console.log(
+                  `[Webhook Demo - Stock Comment] ${commentId}: "${stockCheck.replyText}"`
+                );
+              } else {
+                tasks.push(
+                  MetaGraphService.replyPublicComment(
+                    commentId,
+                    stockCheck.replyText,
+                    page.pageAccessToken
+                  ).catch((err) =>
+                    console.error(
+                      `[Webhook] Comment reply failed for ${commentId}:`,
+                      err.message
+                    )
+                  )
+                );
+              }
+
+              await AppStorage.logAutomationEvent({
+                pageId: incomingPageId,
+                eventId: commentId,
+                eventType: "stock_inquiry",
+                senderId,
+                senderName,
+                inputMessage: commentText,
+                replyMessage: stockCheck.replyText,
+                handledBy: "Stock & Price Parser (Comment)",
+                status: "success",
+              });
+              continue;
+            }
+
+            // Layer B: Standard Keyword Automation Rules
+            const matchedRule = findMatchingRule(commentText, page.rules);
+
+            if (matchedRule) {
+              let publicReplySent = false;
+              if (matchedRule.commentReply && matchedRule.commentReply.trim()) {
                 if (isDemo) {
                   console.log(
-                    `[Webhook Demo - Stock/Price Comment Reply] comment ${commentId}: "${stockCheck.replyText}"`
+                    `[Webhook Demo - Rule Public] ${commentId}: "${matchedRule.commentReply.trim()}"`
                   );
                 } else {
                   tasks.push(
                     MetaGraphService.replyPublicComment(
                       commentId,
-                      stockCheck.replyText,
+                      matchedRule.commentReply.trim(),
                       page.pageAccessToken
                     ).catch((err) =>
                       console.error(
-                        `[Webhook] Public reply failed for comment ${commentId}:`,
+                        `[Webhook] Public reply failed for ${commentId}:`,
                         err.message
                       )
                     )
                   );
                 }
-                continue;
+                publicReplySent = true;
               }
 
-              // Priority 2: Standard Keyword Automation Rules
-              const matchedRule = findMatchingRule(commentText, page.rules);
-
-              if (matchedRule) {
-                // Public Comment Reply
-                if (matchedRule.commentReply && matchedRule.commentReply.trim()) {
-                  if (isDemo) {
-                    console.log(
-                      `[Webhook Demo] Simulated public reply to comment ${commentId}: "${matchedRule.commentReply.trim()}"`
-                    );
-                  } else {
-                    tasks.push(
-                      MetaGraphService.replyPublicComment(
-                        commentId,
-                        matchedRule.commentReply.trim(),
-                        page.pageAccessToken
-                      ).catch((err) =>
-                        console.error(
-                          `[Webhook] Public reply failed for comment ${commentId}:`,
-                          err.message
-                        )
+              if (
+                matchedRule.sendPrivateInbox &&
+                matchedRule.inboxReply &&
+                matchedRule.inboxReply.trim()
+              ) {
+                if (isDemo) {
+                  console.log(
+                    `[Webhook Demo - Rule DM] ${commentId}: "${matchedRule.inboxReply.trim()}"`
+                  );
+                } else {
+                  tasks.push(
+                    MetaGraphService.sendPrivateCommentReply(
+                      incomingPageId,
+                      commentId,
+                      matchedRule.inboxReply.trim(),
+                      page.pageAccessToken
+                    ).catch((err) =>
+                      console.error(
+                        `[Webhook] Private inbox reply failed for ${commentId}:`,
+                        err.message
                       )
-                    );
-                  }
-                }
-
-                // Private Message Reply
-                if (
-                  matchedRule.sendPrivateInbox &&
-                  matchedRule.inboxReply &&
-                  matchedRule.inboxReply.trim()
-                ) {
-                  if (isDemo) {
-                    console.log(
-                      `[Webhook Demo] Simulated private DM to comment ${commentId}: "${matchedRule.inboxReply.trim()}"`
-                    );
-                  } else {
-                    tasks.push(
-                      MetaGraphService.sendPrivateCommentReply(
-                        incomingPageId,
-                        commentId,
-                        matchedRule.inboxReply.trim(),
-                        page.pageAccessToken
-                      ).catch((err) =>
-                        console.error(
-                          `[Webhook] Private inbox reply failed for comment ${commentId}:`,
-                          err.message
-                        )
-                      )
-                    );
-                  }
+                    )
+                  );
                 }
               }
+
+              await AppStorage.logAutomationEvent({
+                pageId: incomingPageId,
+                eventId: commentId,
+                eventType: "comment",
+                senderId,
+                senderName,
+                inputMessage: commentText,
+                replyMessage:
+                  matchedRule.commentReply || matchedRule.inboxReply || "Rule Triggered",
+                handledBy: `Keyword Rule (${matchedRule.keyword})`,
+                status: "success",
+              });
+              continue;
+            }
+
+            // Layer C: Fallback AI Reply for comments
+            const aiFallback = await generateAiReply(
+              incomingPageId,
+              commentText,
+              page.pageName
+            );
+            if (aiFallback.reply) {
+              if (isDemo) {
+                console.log(
+                  `[Webhook Demo - AI Comment Reply] ${commentId}: "${aiFallback.reply}"`
+                );
+              } else {
+                tasks.push(
+                  MetaGraphService.replyPublicComment(
+                    commentId,
+                    aiFallback.reply,
+                    page.pageAccessToken
+                  ).catch((err) =>
+                    console.error(
+                      `[Webhook] AI comment reply failed for ${commentId}:`,
+                      err.message
+                    )
+                  )
+                );
+              }
+
+              await AppStorage.logAutomationEvent({
+                pageId: incomingPageId,
+                eventId: commentId,
+                eventType: "ai_reply",
+                senderId,
+                senderName,
+                inputMessage: commentText,
+                replyMessage: aiFallback.reply,
+                handledBy: `AI Smart Reply (${aiFallback.source})`,
+                status: "success",
+              });
             }
           }
         }
       }
     }
 
-    // 2. Process Messenger Automation with 3-Layer Pipeline
+    // ==========================================
+    // 2. Process Messenger Automation (DMR)
+    // ==========================================
     if (Array.isArray(entry.messaging)) {
       for (const msgItem of entry.messaging) {
-        // Skip echo messages sent by the page/app
         if (msgItem.message?.is_echo) {
           continue;
         }
@@ -191,19 +324,32 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
           continue;
         }
 
+        const messageId = msgItem.message?.mid || `msg_${Date.now()}_${senderPsid}`;
         const userText =
           msgItem.message?.text || msgItem.postback?.title || "";
 
         if (!userText) continue;
 
+        // Deduplication / Idempotency check: Ignore duplicate message retries
+        const alreadyProcessed = await AppStorage.isEventProcessed(messageId);
+        if (alreadyProcessed) {
+          console.log(
+            `[Webhook Deduplication] Skipping already processed message ${messageId}`
+          );
+          continue;
+        }
+
         let replyToSend = "";
         let handledBy = "";
+        let logEventType: "order" | "stock_inquiry" | "message" | "ai_reply" = "message";
+        let customerName = "Customer";
 
         // ==========================================
         // Layer 1: Automated Order Extraction
         // ==========================================
         const orderData = await parseOrderMessage(incomingPageId, userText);
         if (orderData && orderData.isValid) {
+          customerName = orderData.customerName;
           const newOrder = await AppStorage.createOrder({
             pageId: incomingPageId,
             customerPsid: senderPsid,
@@ -219,7 +365,7 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
             notes: `Auto-extracted from Messenger chat: "${userText.slice(0, 80)}"`,
           });
 
-          // Decrement product stock if matched
+          // Decrement product stock
           if (orderData.product?._id) {
             await AppStorage.decrementProductStock(
               orderData.product._id,
@@ -235,6 +381,7 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
             orderData.totalAmount
           );
           handledBy = "Layer 1: Auto Order Extractor";
+          logEventType = "order";
         }
 
         // ==========================================
@@ -248,6 +395,7 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
           if (stockCheck.isInquiry && stockCheck.replyText) {
             replyToSend = stockCheck.replyText;
             handledBy = "Layer 2: Real-Time Stock & Price Checker";
+            logEventType = "stock_inquiry";
           }
         }
 
@@ -262,22 +410,24 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
             matchedRule.inboxReply.trim()
           ) {
             replyToSend = matchedRule.inboxReply.trim();
-            handledBy = "Automation Rules";
+            handledBy = `Keyword Rule (${matchedRule.keyword})`;
+            logEventType = "message";
           }
         }
 
         // ==========================================
-        // Layer 3: Gemini AI Smart Salesman Fallback
+        // Layer 3: AI Smart Reply Fallback
         // ==========================================
         if (!replyToSend) {
-          const aiResult = await generateAiSalesmanReply(
+          const aiResult = await generateAiReply(
             incomingPageId,
             userText,
             page.pageName
           );
           if (aiResult.reply && aiResult.reply.trim().length > 0) {
             replyToSend = aiResult.reply.trim();
-            handledBy = `Layer 3: Gemini AI Salesman (${aiResult.source})`;
+            handledBy = `Layer 3: AI Smart Reply (${aiResult.source})`;
+            logEventType = "ai_reply";
           }
         }
 
@@ -285,34 +435,54 @@ async function processWebhookEntries(entries: MetaWebhookPayload["entry"]) {
         if (!replyToSend && page.defaultInboxReply) {
           replyToSend = page.defaultInboxReply.trim();
           handledBy = "Default Inbox Greeting";
+          logEventType = "message";
         }
 
         // Dispatch Reply
         if (replyToSend) {
+          let dispatchStatus: "success" | "failed" = "success";
+          let errorMsg = "";
+
           if (isDemo) {
             console.log(
-              `[Webhook Demo - ${handledBy}] Messenger reply to PSID ${senderPsid}: "${replyToSend.replace(/\n/g, " ")}"`
+              `[Webhook Demo - ${handledBy}] Messenger reply to ${senderPsid}: "${replyToSend.replace(/\n/g, " ")}"`
             );
           } else {
-            tasks.push(
-              MetaGraphService.sendDirectMessengerReply(
+            try {
+              await MetaGraphService.sendDirectMessengerReply(
                 incomingPageId,
                 senderPsid,
                 replyToSend,
                 page.pageAccessToken
-              ).catch((err) =>
-                console.error(
-                  `[Webhook] Messenger reply failed for PSID ${senderPsid}:`,
-                  err.message
-                )
-              )
-            );
+              );
+            } catch (err: unknown) {
+              const error = err as Error;
+              console.error(
+                `[Webhook] Messenger reply failed for PSID ${senderPsid}:`,
+                error.message
+              );
+              dispatchStatus = "failed";
+              errorMsg = error.message;
+            }
           }
+
+          // Record Idempotency & Live Activity Log
+          await AppStorage.logAutomationEvent({
+            pageId: incomingPageId,
+            eventId: messageId,
+            eventType: logEventType,
+            senderId: senderPsid,
+            senderName: customerName,
+            inputMessage: userText,
+            replyMessage: replyToSend,
+            handledBy,
+            status: dispatchStatus,
+            error: errorMsg,
+          });
         }
       }
     }
 
-    // Wait for all non-blocking actions for this page to settle
     if (tasks.length > 0) {
       await Promise.allSettled(tasks);
     }

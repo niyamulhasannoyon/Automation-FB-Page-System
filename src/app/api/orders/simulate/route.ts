@@ -5,8 +5,8 @@ import {
   parseOrderMessage,
   parseStockOrPriceInquiry,
   formatOrderConfirmationReply,
-} from "@/lib/order-parser";
-import { generateAiSalesmanReply } from "@/lib/ai-salesman";
+} from "@/lib/order-engine";
+import { generateAiReply } from "@/lib/ai-reply";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,9 +27,11 @@ export async function POST(req: NextRequest) {
 
     const userText = message.trim();
     const psid = senderPsid || `sim_${Date.now().toString().slice(-6)}`;
+    const eventId = `sim_evt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const customerDisplayName = senderName || "রাফি আহমেদ (Tester)";
 
     // 1. Layer 1: Auto Order Extraction
-    const orderData = await parseOrderMessage(pageId, userText, senderName);
+    const orderData = await parseOrderMessage(pageId, userText, customerDisplayName);
     if (orderData && orderData.isValid) {
       const newOrder = await AppStorage.createOrder({
         pageId,
@@ -41,9 +43,9 @@ export async function POST(req: NextRequest) {
         productId: orderData.product?._id || "",
         quantity: orderData.quantity,
         totalAmount: orderData.totalAmount,
-        status: "pending",
+        status: "confirmed", // Automatically confirmed in database per prompt
         source: "messenger_auto",
-        notes: `Simulated inbox order test: "${userText.slice(0, 60)}"`,
+        notes: `Simulated inbox order: "${userText.slice(0, 60)}"`,
       });
 
       if (orderData.product?._id) {
@@ -61,12 +63,25 @@ export async function POST(req: NextRequest) {
         orderData.totalAmount
       );
 
+      // Log event
+      await AppStorage.logAutomationEvent({
+        pageId,
+        eventId,
+        eventType: "order",
+        senderId: psid,
+        senderName: orderData.customerName,
+        inputMessage: userText,
+        replyMessage: reply,
+        handledBy: "Layer 1: Auto Order Extractor (Simulator)",
+        status: "success",
+      });
+
       return NextResponse.json({
         reply,
         layer: "order_extracted",
         layerName: "Layer 1: Auto-Order Extractor",
         layerDescription:
-          "Detected valid BD phone number, delivery address & matched product. Order created in database & stock updated!",
+          "Detected valid BD phone number, delivery address & matched product. Order confirmed in database & stock decremented!",
         orderCreated: newOrder,
         matchedProduct: orderData.product,
       });
@@ -75,12 +90,24 @@ export async function POST(req: NextRequest) {
     // 2. Layer 2: Real-Time Stock & Price Inquiry
     const stockCheck = await parseStockOrPriceInquiry(pageId, userText);
     if (stockCheck.isInquiry && stockCheck.replyText) {
+      await AppStorage.logAutomationEvent({
+        pageId,
+        eventId,
+        eventType: "stock_inquiry",
+        senderId: psid,
+        senderName: customerDisplayName,
+        inputMessage: userText,
+        replyMessage: stockCheck.replyText,
+        handledBy: "Layer 2: Real-Time Stock & Price Checker (Simulator)",
+        status: "success",
+      });
+
       return NextResponse.json({
         reply: stockCheck.replyText,
         layer: "stock_price_inquiry",
         layerName: "Layer 2: Real-Time Stock & Price Checker",
         layerDescription:
-          "Queried page product catalog to verify current price & live inventory availability.",
+          "Queried live product catalog to verify current price & stock availability.",
         matchedProduct: stockCheck.product,
       });
     }
@@ -88,27 +115,55 @@ export async function POST(req: NextRequest) {
     // 3. Automation Rules Check
     const matchedRule = findMatchingRule(userText, page.rules);
     if (matchedRule && matchedRule.inboxReply && matchedRule.inboxReply.trim()) {
+      const reply = matchedRule.inboxReply.trim();
+
+      await AppStorage.logAutomationEvent({
+        pageId,
+        eventId,
+        eventType: "message",
+        senderId: psid,
+        senderName: customerDisplayName,
+        inputMessage: userText,
+        replyMessage: reply,
+        handledBy: `Keyword Rule (${matchedRule.keyword})`,
+        status: "success",
+      });
+
       return NextResponse.json({
-        reply: matchedRule.inboxReply.trim(),
+        reply,
         layer: "automation_rule",
         layerName: "Custom Keyword Automation Rule",
         layerDescription: `Matched configured keyword: "${matchedRule.keyword}" (${matchedRule.matchType})`,
       });
     }
 
-    // 4. Layer 3: Gemini AI Smart Salesman Fallback
-    const aiResult = await generateAiSalesmanReply(
+    // 4. Layer 3: AI Smart Reply Fallback
+    const aiResult = await generateAiReply(
       pageId,
       userText,
       page.pageName
     );
     if (aiResult.reply && aiResult.reply.trim().length > 0) {
+      const reply = aiResult.reply.trim();
+
+      await AppStorage.logAutomationEvent({
+        pageId,
+        eventId,
+        eventType: "ai_reply",
+        senderId: psid,
+        senderName: customerDisplayName,
+        inputMessage: userText,
+        replyMessage: reply,
+        handledBy: `Layer 3: AI Smart Reply (${aiResult.source})`,
+        status: "success",
+      });
+
       return NextResponse.json({
-        reply: aiResult.reply.trim(),
+        reply,
         layer: "ai_salesman",
         layerName:
-          aiResult.source === "gemini_api"
-            ? "Layer 3: Google Gemini AI Smart Salesman"
+          aiResult.source === "gemini_2.5_flash"
+            ? "Layer 3: Google Gemini 2.5 Flash"
             : "Layer 3: Smart Bengali AI Contextual Engine",
         layerDescription:
           "Generated smart, polite Bengali sales response referencing product catalog and store policies.",
@@ -119,6 +174,18 @@ export async function POST(req: NextRequest) {
     const fallback =
       page.defaultInboxReply ||
       "ধন্যবাদ আপনার মেসেজের জন্য! আমাদের প্রতিনিধি খুব শীঘ্রই যোগাযোগ করবেন।";
+
+    await AppStorage.logAutomationEvent({
+      pageId,
+      eventId,
+      eventType: "message",
+      senderId: psid,
+      senderName: customerDisplayName,
+      inputMessage: userText,
+      replyMessage: fallback,
+      handledBy: "Default Page Greeting",
+      status: "success",
+    });
 
     return NextResponse.json({
       reply: fallback,
