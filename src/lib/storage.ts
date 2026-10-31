@@ -1,13 +1,17 @@
 import fs from "fs";
 import path from "path";
-import connectToDatabase from "./db";
+import connectToDatabase, { getMongoUri, maskMongoUri } from "./db";
 import ConnectedPage from "@/models/ConnectedPage";
 import ScheduledPost from "@/models/ScheduledPost";
-import { IConnectedPage, IScheduledPost } from "@/types";
+import Product from "@/models/Product";
+import Order from "@/models/Order";
+import { IConnectedPage, IScheduledPost, IProduct, IOrder } from "@/types";
 
 interface LocalStoreData {
   pages: IConnectedPage[];
   posts: IScheduledPost[];
+  products: IProduct[];
+  orders: IOrder[];
 }
 
 const DATA_DIR = path.join(process.cwd(), ".data");
@@ -47,6 +51,148 @@ function toPost(doc: unknown): IScheduledPost {
   };
 }
 
+function toProduct(doc: unknown): IProduct {
+  const d = doc as {
+    toObject?: () => Record<string, unknown>;
+    _id?: { toString: () => string };
+  };
+  const obj =
+    d && typeof d.toObject === "function"
+      ? d.toObject()
+      : (doc as Record<string, unknown>);
+  return {
+    ...(obj as unknown as IProduct),
+    _id: obj?._id ? String(obj._id) : undefined,
+  };
+}
+
+function toOrder(doc: unknown): IOrder {
+  const d = doc as {
+    toObject?: () => Record<string, unknown>;
+    _id?: { toString: () => string };
+  };
+  const obj =
+    d && typeof d.toObject === "function"
+      ? d.toObject()
+      : (doc as Record<string, unknown>);
+  return {
+    ...(obj as unknown as IOrder),
+    _id: obj?._id ? String(obj._id) : undefined,
+  };
+}
+
+export const SEED_PRODUCTS: IProduct[] = [
+  {
+    _id: "prod_seed_1",
+    pageId: "10928491829384",
+    name: "Premium Cotton Panjabi",
+    sku: "PAN-001",
+    price: 1850,
+    stock: 15,
+    keywords: ["panjabi", "পাঞ্জাবি", "পাঞ্জাবী", "punjabi", "cotton panjabi", "পাঞ্জাবি কালেকশন"],
+    imageUrl:
+      "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600&auto=format&fit=crop&q=80",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    _id: "prod_seed_2",
+    pageId: "10928491829384",
+    name: "Wireless Earbuds Pro",
+    sku: "EAR-102",
+    price: 2450,
+    stock: 8,
+    keywords: ["earbuds", "earphone", "হেডফোন", "ইয়ারবাডস", "ইয়ারফোন", "airpods", "wireless earbuds"],
+    imageUrl:
+      "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=600&auto=format&fit=crop&q=80",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    _id: "prod_seed_3",
+    pageId: "10928491829384",
+    name: "Smart Fitness Watch",
+    sku: "WCH-305",
+    price: 3200,
+    stock: 0, // Stock Out demo
+    keywords: ["watch", "ঘড়ি", "ঘড়ি", "smartwatch", "স্মার্টওয়াচ", "ফিটনেস ওয়াচ"],
+    imageUrl:
+      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=80",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    _id: "prod_seed_4",
+    pageId: "10928491829384",
+    name: "Genuine Leather Wallet",
+    sku: "WAL-401",
+    price: 950,
+    stock: 2, // Low stock demo
+    keywords: ["wallet", "মানিব্যাগ", "লেদার মানিব্যাগ", "leather wallet", "ওয়ালেট"],
+    imageUrl:
+      "https://images.unsplash.com/photo-1627123424574-724758594e93?w=600&auto=format&fit=crop&q=80",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+export const SEED_ORDERS: IOrder[] = [
+  {
+    _id: "order_seed_1",
+    pageId: "10928491829384",
+    orderNumber: "ORD-1001",
+    customerPsid: "demo_psid_101",
+    customerName: "রাকিব হাসান",
+    customerPhone: "01712345678",
+    customerAddress: "ধানমন্ডি ৪/এ, রোড ৯, ঢাকা",
+    productName: "Premium Cotton Panjabi",
+    productId: "prod_seed_1",
+    quantity: 1,
+    totalAmount: 1850,
+    status: "confirmed",
+    source: "messenger_auto",
+    notes: "কাল বিকেলে ডেলিভারি দিলে ভালো হয়",
+    createdAt: new Date(Date.now() - 7200000).toISOString(),
+    updatedAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    _id: "order_seed_2",
+    pageId: "10928491829384",
+    orderNumber: "ORD-1002",
+    customerPsid: "demo_psid_102",
+    customerName: "তানভির আহমেদ",
+    customerPhone: "01898765432",
+    customerAddress: "হাউস ১২, রোড ৪, সেক্টর ৩, উত্তরা, ঢাকা",
+    productName: "Wireless Earbuds Pro",
+    productId: "prod_seed_2",
+    quantity: 1,
+    totalAmount: 2450,
+    status: "pending",
+    source: "messenger_auto",
+    notes: "ক্যাশ অন ডেলিভারি",
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+    updatedAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    _id: "order_seed_3",
+    pageId: "10928491829384",
+    orderNumber: "ORD-1003",
+    customerPsid: "",
+    customerName: "সুমাইয়া রহমান",
+    customerPhone: "01911223344",
+    customerAddress: "মিরপুর ১০, ব্লক সি, ঢাকা",
+    productName: "Genuine Leather Wallet",
+    productId: "prod_seed_4",
+    quantity: 2,
+    totalAmount: 1900,
+    status: "shipped",
+    source: "manual",
+    notes: "রেডেক্স কুরিয়ার ট্র্যাকিং: RDX-88219",
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    updatedAt: new Date(Date.now() - 43200000).toISOString(),
+  },
+];
+
 function ensureLocalStore(): LocalStoreData {
   try {
     if (!fs.existsSync(DATA_DIR)) {
@@ -54,7 +200,31 @@ function ensureLocalStore(): LocalStoreData {
     }
     if (fs.existsSync(STORE_PATH)) {
       const raw = fs.readFileSync(STORE_PATH, "utf-8");
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+
+      let modified = false;
+      if (!Array.isArray(parsed.products) || parsed.products.length === 0) {
+        parsed.products = [...SEED_PRODUCTS];
+        modified = true;
+      }
+      if (!Array.isArray(parsed.orders) || parsed.orders.length === 0) {
+        parsed.orders = [...SEED_ORDERS];
+        modified = true;
+      }
+      if (!Array.isArray(parsed.pages)) {
+        parsed.pages = [];
+        modified = true;
+      }
+      if (!Array.isArray(parsed.posts)) {
+        parsed.posts = [];
+        modified = true;
+      }
+
+      if (modified) {
+        fs.writeFileSync(STORE_PATH, JSON.stringify(parsed, null, 2), "utf-8");
+      }
+
+      return parsed;
     }
   } catch (err) {
     console.error("[Storage] Error reading local store:", err);
@@ -139,6 +309,8 @@ function ensureLocalStore(): LocalStoreData {
         updatedAt: new Date().toISOString(),
       },
     ],
+    products: SEED_PRODUCTS,
+    orders: SEED_ORDERS,
   };
 
   try {
@@ -178,10 +350,7 @@ async function checkMongoConnection(): Promise<boolean> {
     await connectToDatabase();
     isMongoAvailable = true;
     return true;
-  } catch (err) {
-    console.warn(
-      "[Storage] MongoDB offline or unreachable. Using persistent local development store (.data/db.json)."
-    );
+  } catch {
     isMongoAvailable = false;
     return false;
   }
@@ -194,6 +363,14 @@ export class AppStorage {
     const hasMongo = await checkMongoConnection();
     if (hasMongo) {
       try {
+        const count = await ConnectedPage.countDocuments();
+        if (count === 0) {
+          const store = ensureLocalStore();
+          if (store.pages.length > 0) {
+            const toInsert = store.pages.map(({ _id: _unused, ...rest }) => rest);
+            await ConnectedPage.insertMany(toInsert);
+          }
+        }
         const pages = await ConnectedPage.find({}).sort({ updatedAt: -1 });
         return pages.map(toPage);
       } catch (err) {
@@ -354,6 +531,8 @@ export class AppStorage {
         });
         if (deleted) {
           await ScheduledPost.deleteMany({ pageId: deleted.pageId });
+          await Product.deleteMany({ pageId: deleted.pageId });
+          await Order.deleteMany({ pageId: deleted.pageId });
           return true;
         }
       } catch (err) {
@@ -371,6 +550,8 @@ export class AppStorage {
       (p) => p.pageId !== target.pageId && p._id !== target._id
     );
     store.posts = store.posts.filter((p) => p.pageId !== target.pageId);
+    store.products = store.products.filter((p) => p.pageId !== target.pageId);
+    store.orders = store.orders.filter((p) => p.pageId !== target.pageId);
     writeLocalStore(store);
     return true;
   }
@@ -504,7 +685,417 @@ export class AppStorage {
     return updated;
   }
 
+  // ==================== PRODUCTS & INVENTORY ====================
+
+  static async getProducts(pageId: string): Promise<IProduct[]> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const count = await Product.countDocuments({ pageId });
+        if (count === 0) {
+          const store = ensureLocalStore();
+          const pageProds = store.products.filter((p) => p.pageId === pageId);
+          if (pageProds.length > 0) {
+            const toInsert = pageProds.map(({ _id: _unused, ...rest }) => rest);
+            await Product.insertMany(toInsert);
+          }
+        }
+        const products = await Product.find({ pageId }).sort({ createdAt: -1 });
+        return products.map(toProduct);
+      } catch (err) {
+        console.error("[Storage] Mongo getProducts error, using fallback:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    return store.products
+      .filter((p) => p.pageId === pageId)
+      .sort((a, b) => {
+        const tA = new Date(a.createdAt || 0).getTime();
+        const tB = new Date(b.createdAt || 0).getTime();
+        return tB - tA;
+      });
+  }
+
+  static async getProduct(id: string): Promise<IProduct | null> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const prod = await Product.findById(id);
+        if (prod) return toProduct(prod);
+      } catch (err) {
+        console.error("[Storage] Mongo getProduct error, using fallback:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    return store.products.find((p) => p._id === id) || null;
+  }
+
+  static async createProduct(
+    productData: Partial<IProduct> & {
+      pageId: string;
+      name: string;
+      price: number;
+      stock: number;
+    }
+  ): Promise<IProduct> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const created = await Product.create({
+          pageId: productData.pageId,
+          name: productData.name.trim(),
+          sku: productData.sku?.trim() || `SKU-${Date.now().toString().slice(-4)}`,
+          price: Number(productData.price),
+          stock: Number(productData.stock),
+          keywords: Array.isArray(productData.keywords)
+            ? productData.keywords.map((k) => k.trim().toLowerCase())
+            : [productData.name.toLowerCase()],
+          imageUrl: productData.imageUrl || "",
+        });
+        return toProduct(created);
+      } catch (err) {
+        console.error("[Storage] Mongo createProduct error, using fallback:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const newProduct: IProduct = {
+      _id: `prod_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      pageId: productData.pageId,
+      name: productData.name.trim(),
+      sku: productData.sku?.trim() || `SKU-${Date.now().toString().slice(-4)}`,
+      price: Number(productData.price),
+      stock: Number(productData.stock),
+      keywords: Array.isArray(productData.keywords)
+        ? productData.keywords.map((k) => k.trim().toLowerCase())
+        : [productData.name.toLowerCase()],
+      imageUrl: productData.imageUrl || "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    store.products.unshift(newProduct);
+    writeLocalStore(store);
+    return newProduct;
+  }
+
+  static async updateProduct(
+    id: string,
+    updates: Partial<IProduct>
+  ): Promise<IProduct | null> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const updated = await Product.findByIdAndUpdate(
+          id,
+          { $set: updates },
+          { new: true }
+        );
+        if (updated) return toProduct(updated);
+      } catch (err) {
+        console.error("[Storage] Mongo updateProduct error, using fallback:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const index = store.products.findIndex((p) => p._id === id);
+    if (index === -1) return null;
+
+    const updated: IProduct = {
+      ...store.products[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    store.products[index] = updated;
+    writeLocalStore(store);
+    return updated;
+  }
+
+  static async deleteProduct(id: string): Promise<boolean> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const deleted = await Product.findByIdAndDelete(id);
+        if (deleted) return true;
+      } catch (err) {
+        console.error("[Storage] Mongo deleteProduct error, using fallback:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const initialLen = store.products.length;
+    store.products = store.products.filter((p) => p._id !== id);
+    if (store.products.length !== initialLen) {
+      writeLocalStore(store);
+      return true;
+    }
+    return false;
+  }
+
+  static async decrementProductStock(
+    productId: string,
+    quantity: number = 1
+  ): Promise<IProduct | null> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const updated = await Product.findOneAndUpdate(
+          { _id: productId, stock: { $gte: quantity } },
+          { $inc: { stock: -quantity } },
+          { new: true }
+        );
+        if (updated) return toProduct(updated);
+      } catch (err) {
+        console.error("[Storage] Mongo decrementProductStock error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const index = store.products.findIndex((p) => p._id === productId);
+    if (index === -1) return null;
+
+    const currentStock = store.products[index].stock || 0;
+    const newStock = Math.max(0, currentStock - quantity);
+    const updated: IProduct = {
+      ...store.products[index],
+      stock: newStock,
+      updatedAt: new Date().toISOString(),
+    };
+    store.products[index] = updated;
+    writeLocalStore(store);
+    return updated;
+  }
+
+  static async findProductByKeywords(
+    pageId: string,
+    text: string
+  ): Promise<IProduct | null> {
+    const products = await this.getProducts(pageId);
+    if (!products.length || !text) return null;
+
+    const normalizedText = text.toLowerCase();
+
+    // 1. Direct name match
+    for (const prod of products) {
+      if (normalizedText.includes(prod.name.toLowerCase())) {
+        return prod;
+      }
+    }
+
+    // 2. Keyword match
+    for (const prod of products) {
+      if (Array.isArray(prod.keywords)) {
+        for (const kw of prod.keywords) {
+          const cleanKw = kw.trim().toLowerCase();
+          if (cleanKw && normalizedText.includes(cleanKw)) {
+            return prod;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // ==================== ORDERS ====================
+
+  static async getOrders(pageId: string): Promise<IOrder[]> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const count = await Order.countDocuments({ pageId });
+        if (count === 0) {
+          const store = ensureLocalStore();
+          const pageOrders = store.orders.filter((o) => o.pageId === pageId);
+          if (pageOrders.length > 0) {
+            const toInsert = pageOrders.map(({ _id: _unused, ...rest }) => rest);
+            await Order.insertMany(toInsert);
+          }
+        }
+        const orders = await Order.find({ pageId }).sort({ createdAt: -1 });
+        return orders.map(toOrder);
+      } catch (err) {
+        console.error("[Storage] Mongo getOrders error, using fallback:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    return store.orders
+      .filter((o) => o.pageId === pageId)
+      .sort((a, b) => {
+        const tA = new Date(a.createdAt || 0).getTime();
+        const tB = new Date(b.createdAt || 0).getTime();
+        return tB - tA;
+      });
+  }
+
+  static async getOrder(id: string): Promise<IOrder | null> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const order = await Order.findById(id);
+        if (order) return toOrder(order);
+      } catch (err) {
+        console.error("[Storage] Mongo getOrder error, using fallback:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    return store.orders.find((o) => o._id === id || o.orderNumber === id) || null;
+  }
+
+  static async getNextOrderNumber(pageId: string): Promise<string> {
+    const orders = await this.getOrders(pageId);
+    const count = orders.length + 1;
+    return `ORD-${1000 + count}`;
+  }
+
+  static async createOrder(
+    orderData: Partial<IOrder> & {
+      pageId: string;
+      customerName: string;
+      customerPhone: string;
+      customerAddress: string;
+      productName: string;
+      totalAmount: number;
+    }
+  ): Promise<IOrder> {
+    const orderNumber =
+      orderData.orderNumber || (await this.getNextOrderNumber(orderData.pageId));
+
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const created = await Order.create({
+          pageId: orderData.pageId,
+          orderNumber,
+          customerPsid: orderData.customerPsid || "",
+          customerName: orderData.customerName.trim(),
+          customerPhone: orderData.customerPhone.trim(),
+          customerAddress: orderData.customerAddress.trim(),
+          productName: orderData.productName.trim(),
+          productId: orderData.productId || "",
+          quantity: orderData.quantity || 1,
+          totalAmount: Number(orderData.totalAmount),
+          status: orderData.status || "pending",
+          source: orderData.source || "messenger_auto",
+          notes: orderData.notes || "",
+        });
+        return toOrder(created);
+      } catch (err) {
+        console.error("[Storage] Mongo createOrder error, using fallback:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const newOrder: IOrder = {
+      _id: `ord_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      pageId: orderData.pageId,
+      orderNumber,
+      customerPsid: orderData.customerPsid || "",
+      customerName: orderData.customerName.trim(),
+      customerPhone: orderData.customerPhone.trim(),
+      customerAddress: orderData.customerAddress.trim(),
+      productName: orderData.productName.trim(),
+      productId: orderData.productId || "",
+      quantity: orderData.quantity || 1,
+      totalAmount: Number(orderData.totalAmount),
+      status: orderData.status || "pending",
+      source: orderData.source || "messenger_auto",
+      notes: orderData.notes || "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    store.orders.unshift(newOrder);
+    writeLocalStore(store);
+    return newOrder;
+  }
+
+  static async updateOrder(
+    id: string,
+    updates: Partial<IOrder>
+  ): Promise<IOrder | null> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const updated = await Order.findByIdAndUpdate(
+          id,
+          { $set: updates },
+          { new: true }
+        );
+        if (updated) return toOrder(updated);
+      } catch (err) {
+        console.error("[Storage] Mongo updateOrder error, using fallback:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const index = store.orders.findIndex(
+      (o) => o._id === id || o.orderNumber === id
+    );
+    if (index === -1) return null;
+
+    const updated: IOrder = {
+      ...store.orders[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    store.orders[index] = updated;
+    writeLocalStore(store);
+    return updated;
+  }
+
+  static async deleteOrder(id: string): Promise<boolean> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const deleted = await Order.findByIdAndDelete(id);
+        if (deleted) return true;
+      } catch (err) {
+        console.error("[Storage] Mongo deleteOrder error, using fallback:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const initialLen = store.orders.length;
+    store.orders = store.orders.filter(
+      (o) => o._id !== id && o.orderNumber !== id
+    );
+    if (store.orders.length !== initialLen) {
+      writeLocalStore(store);
+      return true;
+    }
+    return false;
+  }
+
+  // ==================== SYSTEM & DIAGNOSTICS ====================
+
   static isFallbackActive(): boolean {
     return isMongoAvailable === false;
+  }
+
+  static async recheckMongoConnection(): Promise<boolean> {
+    isMongoAvailable = null;
+    lastMongoCheckTime = 0;
+    return await checkMongoConnection();
+  }
+
+  static async getConnectionInfo(): Promise<{
+    isConnected: boolean;
+    mode: "mongodb_active" | "local_persistent_store";
+    location: string;
+    currentUri: string;
+  }> {
+    const isConnected = await checkMongoConnection();
+    const rawUri = getMongoUri();
+    return {
+      isConnected,
+      mode: isConnected ? "mongodb_active" : "local_persistent_store",
+      location: isConnected
+        ? "MongoDB Connection Pool (Mongoose v8)"
+        : ".data/db.json (Local JSON Store)",
+      currentUri: maskMongoUri(rawUri),
+    };
   }
 }

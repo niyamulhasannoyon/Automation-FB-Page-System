@@ -115,3 +115,40 @@ export interface MetaWebhookPayload {
   object: "page";
   entry: MetaWebhookEntry[];
 }
+
+// E-Commerce & Inventory Types
+export interface IProduct {
+  _id?: string;
+  pageId: string;
+  name: string;
+  sku?: string;
+  price: number;
+  stock: number;
+  keywords: string[];
+  imageUrl?: string;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+}
+
+export type OrderStatus = "pending" | "confirmed" | "shipped" | "cancelled";
+export type OrderSource = "messenger_auto" | "manual";
+
+export interface IOrder {
+  _id?: string;
+  pageId: string;
+  orderNumber: string;
+  customerPsid?: string;
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  productName: string;
+  productId?: string;
+  quantity: number;
+  totalAmount: number;
+  status: OrderStatus;
+  source: OrderSource;
+  notes?: string;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+}
+

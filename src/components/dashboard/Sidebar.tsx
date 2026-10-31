@@ -12,6 +12,7 @@ import {
   Zap,
   Globe,
   Radio,
+  ShoppingBag,
 } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,12 @@ const NAV_ITEMS = [
     href: "/",
     icon: LayoutDashboard,
     badge: null,
+  },
+  {
+    label: "Orders & Inventory",
+    href: "/orders",
+    icon: ShoppingBag,
+    badge: "AI Bot",
   },
   {
     label: "Automation Rules",
@@ -36,7 +43,7 @@ const NAV_ITEMS = [
     badge: null,
   },
   {
-    label: "Settings & Webhooks",
+    label: "Settings & Database",
     href: "/settings",
     icon: Settings,
     badge: null,

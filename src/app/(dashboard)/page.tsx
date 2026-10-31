@@ -19,6 +19,7 @@ import {
   ExternalLink,
   ChevronRight,
   Sparkles,
+  ShoppingBag,
 } from "lucide-react";
 import Link from "next/link";
 import { IScheduledPost } from "@/types";
@@ -224,6 +225,26 @@ export default function OverviewDashboardPage() {
               </div>
               <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-transform group-hover:translate-x-0.5" />
             </button>
+
+            <Link
+              href="/orders"
+              className="w-full flex items-center justify-between p-3.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 text-left transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-cyan-600/20 text-cyan-400 flex items-center justify-center">
+                  <ShoppingBag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-semibold text-white">
+                    Orders & Stock Manager
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Messenger auto-orders & live inventory checker
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-transform group-hover:translate-x-0.5" />
+            </Link>
 
             <Link
               href="/posts"

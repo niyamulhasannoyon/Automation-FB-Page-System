@@ -12,7 +12,7 @@ interface StatCardProps {
     text: string;
     variant: "success" | "warning" | "danger" | "info" | "purple";
   };
-  glowColor?: "blue" | "indigo" | "emerald" | "amber";
+  glowColor?: "blue" | "indigo" | "emerald" | "amber" | "rose";
 }
 
 export function StatCard({
@@ -28,6 +28,7 @@ export function StatCard({
     indigo: "from-indigo-500/10 via-indigo-500/5 to-transparent text-indigo-400 border-indigo-500/20",
     emerald: "from-emerald-500/10 via-emerald-500/5 to-transparent text-emerald-400 border-emerald-500/20",
     amber: "from-amber-500/10 via-amber-500/5 to-transparent text-amber-400 border-amber-500/20",
+    rose: "from-rose-500/10 via-rose-500/5 to-transparent text-rose-400 border-rose-500/20",
   };
 
   return (

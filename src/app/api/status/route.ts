@@ -20,6 +20,9 @@ export async function GET() {
         cronPublish: "/api/cron/publish",
         pages: "/api/pages",
         posts: "/api/posts",
+        orders: "/api/orders",
+        products: "/api/products",
+        database: "/api/settings/database",
       },
     },
     { status: 200 }
