@@ -10,6 +10,31 @@ export interface IAutomationRule {
   isActive: boolean;
 }
 
+export type TokenType =
+  | "system_user"
+  | "page_permanent"
+  | "long_lived"
+  | "short_lived"
+  | "user"
+  | "demo"
+  | "unknown";
+
+export interface TokenInspectionResult {
+  isValid: boolean;
+  tokenType: TokenType;
+  isPermanent: boolean;
+  expiresAt: string | null;
+  expiresInSeconds: number | null;
+  issuedAt?: string | null;
+  scopes: string[];
+  appId?: string;
+  userId?: string;
+  pageId?: string;
+  autoUpgraded?: boolean;
+  warning?: string;
+  error?: string;
+}
+
 export interface IConnectedPage {
   _id?: string;
   userId?: string;
@@ -22,6 +47,10 @@ export interface IConnectedPage {
   autoReplyEnabled: boolean;
   defaultInboxReply?: string;
   rules: IAutomationRule[];
+  tokenType?: TokenType;
+  tokenExpiresAt?: string | Date | null;
+  tokenScopes?: string[];
+  isPermanent?: boolean;
   createdAt?: string | Date;
   updatedAt?: string | Date;
 }

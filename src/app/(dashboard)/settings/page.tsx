@@ -67,6 +67,61 @@ export default function SettingsPage() {
   const [aiTestResult, setAiTestResult] = useState<string | null>(null);
   const [aiTesting, setAiTesting] = useState(false);
 
+  // Token Management & Permanent Token Upgrade State
+  const updatePageToken = useAppStore((state) => state.updatePageToken);
+  const [showTokenUpdater, setShowTokenUpdater] = useState(false);
+  const [newTokenInput, setNewTokenInput] = useState("");
+  const [updatingToken, setUpdatingToken] = useState(false);
+  const [inspectingNewToken, setInspectingNewToken] = useState(false);
+  const [tokenInspection, setTokenInspection] = useState<{
+    inspection: any;
+    canAutoUpgrade: boolean;
+    missingCrucialScopes: string[];
+    recommendation: string;
+    isPermanent: boolean;
+    tokenType: string;
+  } | null>(null);
+  const [showSystemUserGuide, setShowSystemUserGuide] = useState(false);
+
+  const handleInspectNewToken = async (val: string) => {
+    const trimmed = val.trim();
+    if (!trimmed || trimmed.length < 15 || !activePage) {
+      setTokenInspection(null);
+      return;
+    }
+    setInspectingNewToken(true);
+    try {
+      const res = await fetch("/api/pages/token-inspect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: trimmed, pageId: activePage.pageId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.inspection) {
+        setTokenInspection(data);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setInspectingNewToken(false);
+    }
+  };
+
+  const handleApplyNewToken = async () => {
+    if (!newTokenInput.trim() || !activePage) return;
+    setUpdatingToken(true);
+    try {
+      const res = await updatePageToken(activePage.pageId, newTokenInput.trim());
+      if (res.success) {
+        setNewTokenInput("");
+        setTokenInspection(null);
+        setShowTokenUpdater(false);
+      }
+    } finally {
+      setUpdatingToken(false);
+    }
+  };
+
   const appUrl =
     typeof window !== "undefined"
       ? window.location.origin
@@ -692,44 +747,249 @@ export default function SettingsPage() {
       </Card>
 
       {/* ======================================================== */}
-      {/* 4. TENANT CREDENTIALS & ACCESS INFO                     */}
+      {/* 4. TOKEN HEALTH & PERMANENT ACCESS MANAGER               */}
       {/* ======================================================== */}
-      <Card>
+      <Card className="border-emerald-500/20 bg-gradient-to-r from-emerald-950/15 via-slate-900/30 to-slate-950/30">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
               <Key className="w-4 h-4" />
             </div>
             <div>
-              <CardTitle>Tenant Credentials</CardTitle>
+              <CardTitle>Token Health & Permanent Access Manager</CardTitle>
               <p className="text-xs text-slate-400 mt-0.5">
-                Connected Page ID and access token encryption status
+                Meta System User Permanent Token status, expiration monitoring, and token renewal
               </p>
             </div>
           </div>
+
+          <Badge variant={activePage.isPermanent ? "success" : "warning"}>
+            {activePage.isPermanent
+              ? "Permanent (Never Expires) ♾️"
+              : "Short-Lived Token ⚠️"}
+          </Badge>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5">
-              <span className="text-[10px] font-mono uppercase text-slate-400">
+              <span className="text-[10px] font-mono uppercase text-slate-400 block">
                 Facebook Page ID
               </span>
-              <p className="text-sm font-mono text-white mt-1">
+              <p className="text-xs font-mono text-white mt-1">
                 {activePage.pageId}
               </p>
             </div>
 
             <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5">
-              <span className="text-[10px] font-mono uppercase text-slate-400">
-                Page Access Token
+              <span className="text-[10px] font-mono uppercase text-slate-400 block">
+                Token Type
               </span>
-              <p className="text-sm font-mono text-slate-400 mt-1">
-                {activePage.pageAccessToken
-                  ? `••••••••••••••••••••${activePage.pageAccessToken.slice(-6)}`
-                  : "Not set"}
+              <p className="text-xs font-semibold text-white mt-1 flex items-center gap-1.5">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    activePage.isPermanent ? "bg-emerald-400" : "bg-amber-400"
+                  }`}
+                />
+                <span className="capitalize">
+                  {activePage.tokenType === "system_user"
+                    ? "System User Permanent"
+                    : activePage.tokenType === "page_permanent"
+                    ? "Page Access (Permanent)"
+                    : activePage.tokenType === "demo"
+                    ? "Simulated Permanent"
+                    : activePage.isPermanent
+                    ? "Permanent Token"
+                    : "Short-Lived Token"}
+                </span>
               </p>
             </div>
+
+            <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5">
+              <span className="text-[10px] font-mono uppercase text-slate-400 block">
+                Token Expiration
+              </span>
+              <p
+                className={`text-xs font-mono mt-1 ${
+                  activePage.isPermanent ? "text-emerald-300" : "text-amber-300"
+                }`}
+              >
+                {activePage.isPermanent
+                  ? "Never Expires (Permanent)"
+                  : activePage.tokenExpiresAt
+                  ? new Date(activePage.tokenExpiresAt).toLocaleDateString()
+                  : "Expires in ~1-2 Hours"}
+              </p>
+            </div>
+          </div>
+
+          {/* Scopes & Permissions */}
+          <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase text-slate-400">
+                Granted Automation Scopes
+              </span>
+              <span className="text-[10px] font-mono text-slate-500">
+                Required for 24/7 Comments & Messenger
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                "pages_read_engagement",
+                "pages_manage_posts",
+                "pages_messaging",
+              ].map((scope) => {
+                const hasScope =
+                  activePage.tokenScopes && activePage.tokenScopes.length > 0
+                    ? activePage.tokenScopes.includes(scope)
+                    : true;
+                return (
+                  <span
+                    key={scope}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono flex items-center gap-1.5 ${
+                      hasScope
+                        ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300"
+                        : "bg-white/5 border border-white/10 text-slate-400"
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>{scope}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Action to Update / Upgrade Token */}
+          <div className="pt-2 border-t border-white/10 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-semibold text-white">
+                  Renew or Upgrade Access Token
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  Replace an expiring token with a Meta System User Permanent Token without disconnecting or losing data
+                </p>
+              </div>
+
+              <Button
+                size="sm"
+                variant={showTokenUpdater ? "secondary" : "outline"}
+                onClick={() => setShowTokenUpdater(!showTokenUpdater)}
+                icon={<Key className="w-3.5 h-3.5 text-emerald-400" />}
+              >
+                {showTokenUpdater ? "Cancel" : "Update / Upgrade Token"}
+              </Button>
+            </div>
+
+            {/* Token Updater Form */}
+            {showTokenUpdater && (
+              <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-3 animate-in fade-in duration-200">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-slate-300">
+                      New Permanent Token (System User / Long-Lived)
+                    </label>
+                    {inspectingNewToken && (
+                      <span className="text-[10px] text-cyan-400 font-mono animate-pulse">
+                        Testing token with Meta...
+                      </span>
+                    )}
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={newTokenInput}
+                    onChange={(e) => {
+                      setNewTokenInput(e.target.value);
+                      handleInspectNewToken(e.target.value);
+                    }}
+                    placeholder="Paste your System User Permanent Token (EAA...)"
+                    className="w-full px-3.5 py-2 rounded-xl glass-input text-xs font-mono text-white placeholder:text-slate-600 resize-none"
+                  />
+                </div>
+
+                {tokenInspection && (
+                  <div
+                    className={`p-3 rounded-xl border text-xs space-y-1 ${
+                      tokenInspection.isPermanent
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
+                        : "bg-amber-500/10 border-amber-500/30 text-amber-200"
+                    }`}
+                  >
+                    <p className="font-semibold flex items-center gap-1.5">
+                      {tokenInspection.isPermanent ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                      )}
+                      <span>
+                        {tokenInspection.isPermanent
+                          ? "Permanent Token Verified (Never Expires)"
+                          : "Short-Lived Token (Auto-Upgrade Engine will convert to Permanent)"}
+                      </span>
+                    </p>
+                    <p className="text-[11px] opacity-90">
+                      {tokenInspection.recommendation}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowSystemUserGuide(!showSystemUserGuide)}
+                    className="text-[11px] text-emerald-400 hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                  >
+                    <span>System User Token কীভাবে নেবেন?</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </button>
+
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    isLoading={updatingToken}
+                    onClick={handleApplyNewToken}
+                    disabled={!newTokenInput.trim()}
+                  >
+                    Verify & Apply Permanent Token
+                  </Button>
+                </div>
+
+                {/* Collapsible System User Guide */}
+                {showSystemUserGuide && (
+                  <div className="mt-2 p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-2 text-xs text-slate-300">
+                    <p className="font-semibold text-white">
+                      Meta Business Suite থেকে Permanent Token নেওয়ার নিয়ম:
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1.5 text-slate-400 text-[11px]">
+                      <li>
+                        <a
+                          href="https://business.facebook.com/settings/system-users"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-emerald-400 underline"
+                        >
+                          Meta Business Settings &gt; System Users
+                        </a>
+                        -এ যান।
+                      </li>
+                      <li>
+                        <strong>Add System User</strong> দিয়ে নাম দিন (e.g. AutoPage Bot) এবং Role দিন <strong>Admin</strong>।
+                      </li>
+                      <li>
+                        <strong>Add Assets</strong> &gt; <em>Pages</em> থেকে আপনার ফেসবুক পেজ সিলেক্ট করে Full Control অন করুন।
+                      </li>
+                      <li>
+                        <strong>Generate New Token</strong> চাপুন, App সিলেক্ট করুন এবং Token Expiration দিন <strong>&quot;Never&quot;</strong>।
+                      </li>
+                      <li>
+                        Permissions: <code className="text-emerald-300">pages_read_engagement</code>, <code className="text-emerald-300">pages_manage_posts</code>, <code className="text-emerald-300">pages_messaging</code> সিলেক্ট করে টোকেন কপি করুন।
+                      </li>
+                    </ol>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

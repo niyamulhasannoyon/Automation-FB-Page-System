@@ -35,6 +35,11 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     const body = await req.json();
 
+    const existingPage = await AppStorage.getPage(id);
+    if (!existingPage) {
+      return NextResponse.json({ error: "Page not found." }, { status: 404 });
+    }
+
     const allowedUpdates = [
       "autoReplyEnabled",
       "defaultInboxReply",
@@ -49,6 +54,52 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       }
     }
 
+    let tokenUpdateInfo: Record<string, unknown> | null = null;
+
+    // Handle Token Refresh / Upgrade
+    if (body.pageAccessToken && typeof body.pageAccessToken === "string") {
+      const cleanToken = body.pageAccessToken.trim();
+      const { MetaGraphService } = await import("@/lib/meta-graph");
+
+      const tokenResolution =
+        await MetaGraphService.resolveAndUpgradeToPermanentToken(
+          cleanToken,
+          existingPage.pageId
+        );
+
+      // Verify credentials with the new token
+      if (tokenResolution.tokenType !== "demo") {
+        await MetaGraphService.verifyPageCredentials(
+          existingPage.pageId,
+          tokenResolution.pageAccessToken
+        );
+
+        // Re-subscribe webhook
+        try {
+          await MetaGraphService.subscribePageToWebhook(
+            existingPage.pageId,
+            tokenResolution.pageAccessToken
+          );
+          updatePayload.isWebhookSubscribed = true;
+        } catch {
+          // ignore webhook subscribe warning
+        }
+      }
+
+      updatePayload.pageAccessToken = tokenResolution.pageAccessToken;
+      updatePayload.tokenType = tokenResolution.tokenType;
+      updatePayload.tokenExpiresAt = tokenResolution.tokenExpiresAt;
+      updatePayload.tokenScopes = tokenResolution.tokenScopes;
+      updatePayload.isPermanent = tokenResolution.isPermanent;
+
+      tokenUpdateInfo = {
+        isPermanent: tokenResolution.isPermanent,
+        tokenType: tokenResolution.tokenType,
+        autoUpgraded: tokenResolution.autoUpgraded,
+        warning: tokenResolution.warning || null,
+      };
+    }
+
     const updatedPage = await AppStorage.updatePage(id, updatePayload);
 
     if (!updatedPage) {
@@ -61,7 +112,11 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     };
 
     return NextResponse.json(
-      { message: "Page settings updated successfully.", page: maskedPage },
+      {
+        message: "Page settings updated successfully.",
+        page: maskedPage,
+        ...(tokenUpdateInfo ? { token: tokenUpdateInfo } : {}),
+      },
       { status: 200 }
     );
   } catch (error: unknown) {

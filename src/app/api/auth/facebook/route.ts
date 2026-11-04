@@ -64,11 +64,28 @@ export async function GET(req: NextRequest) {
         throw new Error(tokenData.error?.message || "Failed to exchange OAuth code.");
       }
 
-      const userAccessToken = tokenData.access_token;
+      let userAccessToken = tokenData.access_token;
+
+      // Crucial: Exchange short-lived user token for 60-day Long-Lived User Access Token
+      // According to Meta policy, Page tokens retrieved with a Long-Lived User Token never expire!
+      try {
+        const longLivedUrl = `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${encodeURIComponent(
+          userAccessToken
+        )}`;
+        const llRes = await fetch(longLivedUrl);
+        const llData = await llRes.json();
+        if (llRes.ok && llData.access_token) {
+          userAccessToken = llData.access_token;
+        }
+      } catch (exchangeErr) {
+        console.warn("[OAuth] Could not exchange for long-lived user token:", exchangeErr);
+      }
 
       // Fetch user's managed Facebook Pages and their Page Access Tokens
       const accountsRes = await fetch(
-        `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,picture,access_token&access_token=${userAccessToken}`
+        `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,picture,access_token&access_token=${encodeURIComponent(
+          userAccessToken
+        )}`
       );
       const accountsData = await accountsRes.json();
 
@@ -79,7 +96,7 @@ export async function GET(req: NextRequest) {
       const sessionUser = await getSessionUser(req);
       const userId = sessionUser?.userId || "user_demo";
 
-      // Connect each page
+      // Connect each page as a Permanent Page Token
       for (const pageItem of accountsData.data) {
         await AppStorage.upsertPage({
           userId,
@@ -88,6 +105,15 @@ export async function GET(req: NextRequest) {
           pagePicture: pageItem.picture?.data?.url || "",
           pageAccessToken: pageItem.access_token,
           isWebhookSubscribed: true,
+          tokenType: "page_permanent",
+          isPermanent: true,
+          tokenExpiresAt: null,
+          tokenScopes: [
+            "pages_show_list",
+            "pages_read_engagement",
+            "pages_manage_posts",
+            "pages_messaging",
+          ],
         });
       }
 

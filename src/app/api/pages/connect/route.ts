@@ -19,10 +19,29 @@ export async function POST(req: NextRequest) {
     const cleanPageId = String(pageId).trim();
     const cleanToken = String(pageAccessToken).trim();
 
-    // 1. Verify credentials against Meta Graph API or simulate for demo tokens
+    // 1. Resolve and potentially auto-upgrade token to Permanent Long-Lived Token / System User Token
+    let tokenResolution;
+    try {
+      tokenResolution =
+        await MetaGraphService.resolveAndUpgradeToPermanentToken(
+          cleanToken,
+          cleanPageId
+        );
+    } catch (resolveErr: unknown) {
+      const err = resolveErr as Error;
+      return NextResponse.json(
+        {
+          error: `Meta Token Verification Failed: ${err.message}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const effectiveToken = tokenResolution.pageAccessToken;
+
+    // 2. Verify credentials against Meta Graph API
     let metaProfile;
-    const isDemoToken =
-      cleanToken.startsWith("demo_") || cleanPageId.startsWith("demo_");
+    const isDemoToken = tokenResolution.tokenType === "demo";
 
     if (isDemoToken) {
       metaProfile = {
@@ -38,7 +57,7 @@ export async function POST(req: NextRequest) {
       try {
         metaProfile = await MetaGraphService.verifyPageCredentials(
           cleanPageId,
-          cleanToken
+          effectiveToken
         );
       } catch (graphErr: unknown) {
         const err = graphErr as Error;
@@ -51,7 +70,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Automatically subscribe Page to our app webhook
+    // 3. Automatically subscribe Page to our app webhook
     let isSubscribed = false;
     if (isDemoToken) {
       isSubscribed = true;
@@ -59,7 +78,7 @@ export async function POST(req: NextRequest) {
       try {
         const subResult = await MetaGraphService.subscribePageToWebhook(
           cleanPageId,
-          cleanToken
+          effectiveToken
         );
         isSubscribed = subResult.success;
       } catch (subErr) {
@@ -68,7 +87,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Upsert page record in storage
+    // 4. Upsert page record in storage with Permanent Token metadata
     const pagePicture =
       metaProfile.picture?.data?.url ||
       `https://graph.facebook.com/v21.0/${cleanPageId}/picture?type=large`;
@@ -81,8 +100,12 @@ export async function POST(req: NextRequest) {
       pageId: cleanPageId,
       pageName: metaProfile.name,
       pagePicture,
-      pageAccessToken: cleanToken,
+      pageAccessToken: effectiveToken,
       isWebhookSubscribed: isSubscribed,
+      tokenType: tokenResolution.tokenType,
+      tokenExpiresAt: tokenResolution.tokenExpiresAt,
+      tokenScopes: tokenResolution.tokenScopes,
+      isPermanent: tokenResolution.isPermanent,
     });
 
     const maskedPage = {
@@ -90,10 +113,22 @@ export async function POST(req: NextRequest) {
       pageAccessToken: maskToken(updatedPage.pageAccessToken),
     };
 
+    let statusMsg = "Facebook Page successfully connected and verified!";
+    if (tokenResolution.autoUpgraded) {
+      statusMsg = "Auto-Upgraded to Permanent Page Access Token (Never Expires) & Connected!";
+    } else if (tokenResolution.isPermanent) {
+      statusMsg = "Permanent System User Token (Never Expires) Connected!";
+    }
+
     return NextResponse.json(
       {
-        message: "Facebook Page successfully connected and verified!",
+        message: statusMsg,
         page: maskedPage,
+        isPermanent: tokenResolution.isPermanent,
+        tokenType: tokenResolution.tokenType,
+        tokenExpiresAt: tokenResolution.tokenExpiresAt,
+        autoUpgraded: tokenResolution.autoUpgraded,
+        warning: tokenResolution.warning || null,
       },
       { status: 200 }
     );

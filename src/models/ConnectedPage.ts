@@ -73,6 +73,31 @@ const ConnectedPageSchema = new Schema<ConnectedPageDocument>(
       type: [AutomationRuleSchema],
       default: [],
     },
+    tokenType: {
+      type: String,
+      enum: [
+        "system_user",
+        "page_permanent",
+        "long_lived",
+        "short_lived",
+        "user",
+        "demo",
+        "unknown",
+      ],
+      default: "unknown",
+    },
+    tokenExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    tokenScopes: {
+      type: [String],
+      default: [],
+    },
+    isPermanent: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

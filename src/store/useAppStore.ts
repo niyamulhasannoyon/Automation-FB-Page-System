@@ -29,6 +29,10 @@ interface AppState {
   toggleRuleStatus: (pageId: string, ruleId: string) => Promise<boolean>;
   deleteRule: (pageId: string, ruleId: string) => Promise<boolean>;
   updateDefaultInboxReply: (pageId: string, text: string) => Promise<boolean>;
+  updatePageToken: (
+    pageId: string,
+    token: string
+  ) => Promise<{ success: boolean; isPermanent?: boolean; warning?: string; error?: string }>;
   removePage: (pageId: string) => Promise<boolean>;
 }
 
@@ -317,6 +321,44 @@ export const useAppStore = create<AppState>((set, get) => ({
       const error = err as Error;
       get().showToast(error.message, "error");
       return false;
+    }
+  },
+
+  updatePageToken: async (pageId: string, pageAccessToken: string) => {
+    try {
+      const res = await fetch(`/api/pages/${pageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pageAccessToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to update page token.");
+      }
+
+      await get().fetchPages();
+
+      if (data.token?.autoUpgraded) {
+        get().showToast(
+          "Auto-upgraded to Permanent Page Access Token (Never Expires)!",
+          "success"
+        );
+      } else if (data.token?.isPermanent) {
+        get().showToast(
+          "Permanent System User Token (Never Expires) applied successfully!",
+          "success"
+        );
+      } else {
+        get().showToast(
+          data.token?.warning || "Page access token updated successfully.",
+          "info"
+        );
+      }
+      return { success: true, ...data.token };
+    } catch (err: unknown) {
+      const error = err as Error;
+      get().showToast(error.message, "error");
+      return { success: false, error: error.message };
     }
   },
 

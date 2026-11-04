@@ -45,7 +45,7 @@ export function Header() {
         <PageSwitcher />
 
         {activePage && (
-          <div className="hidden md:flex items-center gap-2 pl-3 border-l border-white/10 text-xs">
+          <div className="hidden md:flex items-center gap-2.5 pl-3 border-l border-white/10 text-xs">
             {activePage.isWebhookSubscribed ? (
               <span className="flex items-center gap-1.5 text-emerald-400 font-mono">
                 <ShieldCheck className="w-3.5 h-3.5" /> Webhook Subscribed
@@ -54,6 +54,23 @@ export function Header() {
               <span className="flex items-center gap-1.5 text-amber-400 font-mono">
                 <ShieldAlert className="w-3.5 h-3.5" /> Webhook Pending
               </span>
+            )}
+
+            {activePage.isPermanent ? (
+              <span
+                className="hidden xl:flex items-center gap-1 text-emerald-400 font-mono text-[11px] bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20"
+                title="Permanent Token Active (Never Expires) - 24/7 Uninterrupted Automation"
+              >
+                ♾️ Permanent Token
+              </span>
+            ) : (
+              <Link
+                href="/settings"
+                className="hidden xl:flex items-center gap-1 text-amber-400 hover:text-amber-300 font-mono text-[11px] bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/25 transition-colors"
+                title="Short-lived token detected. Click to upgrade to Permanent System User Token"
+              >
+                ⚠️ Short-Lived Token (Upgrade)
+              </Link>
             )}
           </div>
         )}

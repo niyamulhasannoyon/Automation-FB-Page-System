@@ -388,6 +388,14 @@ function ensureLocalStore(): LocalStoreData {
         pageAccessToken: "demo_access_token_techflow_2025",
         isWebhookSubscribed: true,
         autoReplyEnabled: true,
+        tokenType: "demo",
+        isPermanent: true,
+        tokenScopes: [
+          "pages_show_list",
+          "pages_read_engagement",
+          "pages_manage_posts",
+          "pages_messaging",
+        ],
         defaultInboxReply:
           "Hello! Thanks for reaching out to TechFlow Digital. How can our team assist you today?",
         rules: [
@@ -605,6 +613,14 @@ export class AppStorage {
               pagePicture: pageData.pagePicture,
               ...(tokenToStore ? { pageAccessToken: tokenToStore } : {}),
               isWebhookSubscribed: Boolean(pageData.isWebhookSubscribed),
+              ...(pageData.tokenType ? { tokenType: pageData.tokenType } : {}),
+              ...(pageData.tokenExpiresAt !== undefined
+                ? { tokenExpiresAt: pageData.tokenExpiresAt }
+                : {}),
+              ...(pageData.tokenScopes ? { tokenScopes: pageData.tokenScopes } : {}),
+              ...(pageData.isPermanent !== undefined
+                ? { isPermanent: Boolean(pageData.isPermanent) }
+                : {}),
             },
             $setOnInsert: {
               autoReplyEnabled: true,
@@ -638,6 +654,16 @@ export class AppStorage {
         pageAccessToken: pageData.pageAccessToken ?? existing.pageAccessToken,
         isWebhookSubscribed:
           pageData.isWebhookSubscribed ?? existing.isWebhookSubscribed,
+        tokenType: pageData.tokenType ?? existing.tokenType ?? "unknown",
+        tokenExpiresAt:
+          pageData.tokenExpiresAt !== undefined
+            ? pageData.tokenExpiresAt
+            : (existing.tokenExpiresAt ?? null),
+        tokenScopes: pageData.tokenScopes ?? existing.tokenScopes ?? [],
+        isPermanent:
+          pageData.isPermanent !== undefined
+            ? pageData.isPermanent
+            : (existing.isPermanent ?? false),
         updatedAt: nowIso,
       };
       store.pages[existingIndex] = updated;
@@ -657,6 +683,10 @@ export class AppStorage {
         defaultInboxReply:
           "Hello! Thanks for reaching out. We received your message and will get back to you shortly.",
         rules: [],
+        tokenType: pageData.tokenType ?? "unknown",
+        tokenExpiresAt: pageData.tokenExpiresAt ?? null,
+        tokenScopes: pageData.tokenScopes ?? [],
+        isPermanent: Boolean(pageData.isPermanent),
         createdAt: nowIso,
         updatedAt: nowIso,
       };
@@ -670,6 +700,11 @@ export class AppStorage {
     id: string,
     updates: Partial<IConnectedPage>
   ): Promise<IConnectedPage | null> {
+    const updatesToApply: Record<string, unknown> = { ...updates };
+    if (updates.pageAccessToken) {
+      updatesToApply.pageAccessToken = encryptToken(updates.pageAccessToken);
+    }
+
     const hasMongo = await checkMongoConnection();
     if (hasMongo) {
       try {
@@ -680,7 +715,7 @@ export class AppStorage {
               { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null },
             ],
           },
-          { $set: updates },
+          { $set: updatesToApply },
           { new: true, runValidators: true }
         );
         if (updated) return toPage(updated);
