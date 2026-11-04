@@ -14,10 +14,12 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const fetchPages = useAppStore((state) => state.fetchPages);
+  const fetchCurrentUser = useAppStore((state) => state.fetchCurrentUser);
 
   useEffect(() => {
     fetchPages();
-  }, [fetchPages]);
+    fetchCurrentUser();
+  }, [fetchPages, fetchCurrentUser]);
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">

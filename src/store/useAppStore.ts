@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { IConnectedPage, IAutomationRule } from "@/types";
+import { IConnectedPage, IAutomationRule, UserSession } from "@/types";
 
 interface ToastState {
   message: string;
@@ -9,6 +9,7 @@ interface ToastState {
 interface AppState {
   pages: IConnectedPage[];
   activePage: IConnectedPage | null;
+  currentUser: UserSession | null;
   isLoading: boolean;
   isConnectModalOpen: boolean;
   isRuleModalOpen: boolean;
@@ -21,6 +22,7 @@ interface AppState {
   showToast: (message: string, type?: "success" | "error" | "info") => void;
   clearToast: () => void;
   setActivePage: (page: IConnectedPage | null) => void;
+  fetchCurrentUser: () => Promise<UserSession | null>;
   fetchPages: () => Promise<void>;
   togglePageAutomation: (pageId: string) => Promise<boolean>;
   saveRule: (pageId: string, rule: IAutomationRule) => Promise<boolean>;
@@ -33,6 +35,7 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   pages: [],
   activePage: null,
+  currentUser: null,
   isLoading: false,
   isConnectModalOpen: false,
   isRuleModalOpen: false,
@@ -56,6 +59,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearToast: () => set({ toast: null }),
 
   setActivePage: (page) => set({ activePage: page }),
+
+  fetchCurrentUser: async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          set({ currentUser: data.user });
+          return data.user as UserSession;
+        }
+      }
+      set({ currentUser: null });
+      return null;
+    } catch (err) {
+      console.warn("Failed to fetch current user:", err);
+      set({ currentUser: null });
+      return null;
+    }
+  },
 
   fetchPages: async () => {
     set({ isLoading: true });

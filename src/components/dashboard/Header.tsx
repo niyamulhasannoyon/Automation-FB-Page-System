@@ -4,7 +4,8 @@ import React from "react";
 import { PageSwitcher } from "./PageSwitcher";
 import { useAppStore } from "@/store/useAppStore";
 import { Switch } from "@/components/common/Switch";
-import { RefreshCw, Radio, ShieldCheck, ShieldAlert, LogOut } from "lucide-react";
+import Link from "next/link";
+import { RefreshCw, Radio, ShieldCheck, ShieldAlert, LogOut, Crown } from "lucide-react";
 
 export function Header() {
   const activePage = useAppStore((state) => state.activePage);
@@ -13,10 +14,28 @@ export function Header() {
   );
   const fetchPages = useAppStore((state) => state.fetchPages);
   const isLoading = useAppStore((state) => state.isLoading);
+  const currentUser = useAppStore((state) => state.currentUser);
+  const showToast = useAppStore((state) => state.showToast);
+
+  const isAdmin = currentUser?.role === "admin";
 
   const handleToggle = () => {
     if (activePage) {
       togglePageAutomation(activePage.pageId);
+    }
+  };
+
+  const handleQuickSwitchToAdmin = async () => {
+    try {
+      const res = await fetch("/api/auth/admin-login", { method: "POST" });
+      if (res.ok) {
+        showToast("Switched session to Super Admin!", "success");
+        window.location.href = "/admin";
+      } else {
+        showToast("Failed to switch to admin.", "error");
+      }
+    } catch {
+      showToast("Network error during admin elevation.", "error");
     }
   };
 
@@ -40,9 +59,33 @@ export function Header() {
         )}
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {/* User Identity / Role Pill */}
+        {isAdmin ? (
+          <Link
+            href="/admin"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-semibold hover:border-indigo-400 transition-all shadow-[0_0_12px_rgba(99,102,241,0.2)]"
+            title="Logged in as Super Admin - Click to open Admin Panel"
+          >
+            <Crown className="w-3.5 h-3.5 text-amber-300" />
+            <span className="hidden sm:inline">Super Admin</span>
+          </Link>
+        ) : (
+          <button
+            onClick={handleQuickSwitchToAdmin}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-indigo-500/15 text-slate-300 hover:text-indigo-300 border border-white/10 hover:border-indigo-500/30 text-xs font-medium transition-all cursor-pointer"
+            title="Switch to Super Admin Mode"
+          >
+            <span className="w-2 h-2 rounded-full bg-slate-400" />
+            <span className="hidden sm:inline">Merchant</span>
+            <span className="text-[10px] font-mono text-indigo-400 font-semibold bg-indigo-500/20 px-1 rounded">
+              Switch Admin
+            </span>
+          </button>
+        )}
+
         {activePage && (
-          <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/10">
+          <div className="hidden lg:flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/10">
             <div className="flex items-center gap-1.5">
               <Radio
                 className={`w-3 h-3 ${

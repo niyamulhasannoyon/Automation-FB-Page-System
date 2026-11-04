@@ -24,6 +24,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isDemoLoading, setIsDemoLoading] = useState(false);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,13 +50,40 @@ export default function LoginPage() {
         throw new Error(data.error || "Authentication failed.");
       }
 
-      router.push("/");
+      // If logging in as admin, redirect directly to /admin
+      if (data.user?.role === "admin") {
+        router.push("/admin");
+      } else {
+        router.push("/");
+      }
       router.refresh();
     } catch (err: unknown) {
       const errorObj = err as Error;
       setError(errorObj.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleAdminLogin = async () => {
+    setError(null);
+    setIsAdminLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/admin-login", { method: "POST" });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to initialize admin session.");
+      }
+
+      router.push("/admin");
+      router.refresh();
+    } catch (err: unknown) {
+      const errorObj = err as Error;
+      setError(errorObj.message);
+    } finally {
+      setIsAdminLoading(false);
     }
   };
 
@@ -107,30 +135,29 @@ export default function LoginPage() {
 
         {/* Main Card */}
         <div className="p-6 sm:p-8 rounded-3xl glass-panel border border-white/10 shadow-2xl space-y-6">
-          {/* Quick Demo Login Hero Action */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900/30 via-indigo-900/20 to-purple-900/20 border border-blue-500/30 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-blue-300 flex items-center gap-1.5 font-mono">
-                <Sparkles className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-                Evaluation & Live Testing
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                1-Click Ready
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-300 leading-relaxed">
-              Explore the entire platform immediately with pre-seeded products, orders, rules, and live bot simulator:
-            </p>
+          {/* Super Admin & Merchant Quick Access Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <Button
               type="button"
               variant="primary"
               size="sm"
+              isLoading={isAdminLoading}
+              onClick={handleAdminLogin}
+              className="w-full font-semibold bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-[0_0_15px_rgba(99,102,241,0.35)] text-xs py-2.5"
+              icon={<ShieldCheck className="w-4 h-4 text-amber-300" />}
+            >
+              Super Admin Mode
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
               isLoading={isDemoLoading}
               onClick={handleDemoLogin}
-              className="w-full font-semibold shadow-glow"
-              icon={<ArrowRight className="w-4 h-4" />}
+              className="w-full font-semibold text-xs py-2.5"
+              icon={<ArrowRight className="w-4 h-4 text-blue-400" />}
             >
-              One-Click Demo Login
+              Merchant Demo
             </Button>
           </div>
 

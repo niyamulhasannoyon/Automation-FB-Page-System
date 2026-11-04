@@ -101,6 +101,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "IGNORED_NOT_PAGE" }, { status: 200 });
     }
 
+    // Super Admin Emergency Pause Check
+    if (AppStorage.isEmergencyPaused()) {
+      console.warn(
+        "[Webhook] Platform Emergency Pause is ACTIVE by Super Admin. Event skipped."
+      );
+      return NextResponse.json(
+        { status: "EMERGENCY_PAUSED_BY_ADMIN" },
+        { status: 200 }
+      );
+    }
+
     // Process asynchronously so Meta receives HTTP 200 response immediately (< 200ms)
     processWebhookEntries(payload.entry).catch((err) => {
       console.error("[Webhook] Background processing error:", err);

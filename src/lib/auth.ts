@@ -10,6 +10,13 @@ export const DEMO_USER: UserSession = {
   role: "merchant",
 };
 
+export const ADMIN_USER: UserSession = {
+  userId: "user_admin",
+  email: "admin@autopage.io",
+  name: "Super Admin (Owner)",
+  role: "admin",
+};
+
 /**
  * Base64URL string encoding and decoding helpers
  */
@@ -172,8 +179,11 @@ export async function verifyPassword(
 ): Promise<boolean> {
   if (!storedHash || !password) return false;
 
-  // Handle plain demo password check
-  if (storedHash === "demo123456" && password === "demo123456") {
+  // Handle plain demo and admin password checks
+  if (
+    (storedHash === "demo123456" && password === "demo123456") ||
+    (storedHash === "admin123456" && password === "admin123456")
+  ) {
     return true;
   }
 

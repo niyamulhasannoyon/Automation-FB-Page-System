@@ -45,6 +45,21 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // 4. Protect Super Admin routes
+  if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
+    if (user.role !== "admin") {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "Forbidden. Super Admin privileges required." },
+          { status: 403 }
+        );
+      }
+      const redirectUrl = new URL("/", req.url);
+      redirectUrl.searchParams.set("error", "admin_required");
+      return NextResponse.redirect(redirectUrl);
+    }
+  }
+
   // User is authenticated, pass through
   return NextResponse.next();
 }

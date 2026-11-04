@@ -198,3 +198,50 @@ export interface IAutomationLog {
   createdAt?: string | Date;
 }
 
+// Admin Panel System Types
+export interface IAdminStats {
+  totalUsers: number;
+  totalMerchants: number;
+  totalAdmins: number;
+  totalPages: number;
+  totalActivePages: number;
+  totalWebhookSubscribed: number;
+  totalOrders: number;
+  totalGmv: number;
+  totalLogs: number;
+  todayLogs: number;
+  totalPosts: number;
+  publishedPosts: number;
+  databaseStatus: {
+    connected: boolean;
+    mode: "mongodb" | "local_json";
+    uriMasked: string;
+    pingMs: number;
+  };
+  metaStatus: {
+    webhookConfigured: boolean;
+    appSecretConfigured: boolean;
+    apiVersion: string;
+    verifyToken: string;
+  };
+  systemUptime: number;
+  emergencyPaused: boolean;
+}
+
+export interface IAdminUserItem {
+  _id?: string;
+  id?: string;
+  name: string;
+  email: string;
+  role: "admin" | "merchant";
+  connectedPagesCount: number;
+  createdAt?: string | Date;
+}
+
+export interface IAdminPageItem extends IConnectedPage {
+  ownerName?: string;
+  ownerEmail?: string;
+  ordersCount?: number;
+  logsCount?: number;
+}
+

@@ -16,8 +16,11 @@ import {
   IAutomationLog,
   AutomationEventType,
   AutomationEventStatus,
+  IAdminStats,
+  IAdminUserItem,
+  IAdminPageItem,
 } from "@/types";
-import { encryptToken, decryptToken } from "./crypto";
+import { encryptToken, decryptToken, maskToken } from "./crypto";
 
 interface LocalStoreData {
   pages: IConnectedPage[];
@@ -34,6 +37,8 @@ const STORE_PATH = path.join(DATA_DIR, "db.json");
 let isMongoAvailable: boolean | null = null;
 let lastMongoCheckTime = 0;
 const MONGO_CHECK_INTERVAL = 30000; // 30 seconds cache for connection state
+let isSystemEmergencyPaused = false;
+const SERVER_START_TIME = Date.now();
 
 function toPage(doc: unknown): IConnectedPage {
   const d = doc as {
@@ -1406,6 +1411,391 @@ export class AppStorage {
         ? "MongoDB Connection Pool (Mongoose v8)"
         : ".data/db.json (Local JSON Store)",
       currentUri: maskMongoUri(rawUri),
+    };
+  }
+
+  // ==================== SUPER ADMIN CONTROL ENGINE ====================
+
+  static isEmergencyPaused(): boolean {
+    return isSystemEmergencyPaused;
+  }
+
+  static setEmergencyPause(paused: boolean): boolean {
+    isSystemEmergencyPaused = Boolean(paused);
+    return isSystemEmergencyPaused;
+  }
+
+  static async getAllUsersAdmin(): Promise<IAdminUserItem[]> {
+    const hasMongo = await checkMongoConnection();
+    let usersList: IUser[] = [];
+
+    if (hasMongo) {
+      try {
+        const found = await User.find().sort({ createdAt: -1 });
+        usersList = found.map(toUser);
+      } catch (err) {
+        console.error("[Storage] Mongo getAllUsersAdmin error:", err);
+      }
+    } else {
+      const store = ensureLocalStore();
+      usersList = store.users || [];
+    }
+
+    // Ensure built-in super admin is listed
+    if (!usersList.some((u) => u.email === "admin@autopage.io")) {
+      usersList.unshift({
+        _id: "user_admin",
+        id: "user_admin",
+        email: "admin@autopage.io",
+        name: "Super Admin (Owner)",
+        role: "admin",
+        createdAt: new Date(SERVER_START_TIME).toISOString(),
+      });
+    }
+
+    // Ensure built-in demo merchant is listed
+    if (!usersList.some((u) => u.email === "demo@autopage.io")) {
+      usersList.push({
+        _id: "user_demo",
+        id: "user_demo",
+        email: "demo@autopage.io",
+        name: "Demo Merchant (Live)",
+        role: "merchant",
+        createdAt: new Date(SERVER_START_TIME).toISOString(),
+      });
+    }
+
+    // Map connected pages count for each user
+    const pages = await AppStorage.getAllPages();
+    return usersList.map((user) => {
+      const uId = user._id || user.id || "";
+      const count = pages.filter(
+        (p) => p.userId === uId || p.userId === user.email
+      ).length;
+      return {
+        _id: uId,
+        id: uId,
+        name: user.name,
+        email: user.email,
+        role: user.role || "merchant",
+        connectedPagesCount: count,
+        createdAt: user.createdAt,
+      };
+    });
+  }
+
+  static async updateUserRoleAdmin(
+    userId: string,
+    role: "admin" | "merchant"
+  ): Promise<boolean> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const updated = await User.findByIdAndUpdate(
+          userId,
+          { role },
+          { new: true }
+        );
+        if (updated) return true;
+      } catch (err) {
+        console.error("[Storage] Mongo updateUserRoleAdmin error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const user = store.users?.find((u) => u._id === userId || u.id === userId);
+    if (user) {
+      user.role = role;
+      writeLocalStore(store);
+      return true;
+    }
+    return false;
+  }
+
+  static async deleteUserAdmin(userId: string): Promise<boolean> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        await User.findByIdAndDelete(userId);
+        return true;
+      } catch (err) {
+        console.error("[Storage] Mongo deleteUserAdmin error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const initialLen = store.users?.length || 0;
+    store.users = (store.users || []).filter(
+      (u) => u._id !== userId && u.id !== userId
+    );
+    if (store.users.length !== initialLen) {
+      writeLocalStore(store);
+      return true;
+    }
+    return false;
+  }
+
+  static async getAllPagesAdmin(): Promise<IAdminPageItem[]> {
+    const hasMongo = await checkMongoConnection();
+    let rawPages: IConnectedPage[] = [];
+
+    if (hasMongo) {
+      try {
+        const pages = await ConnectedPage.find().sort({ createdAt: -1 });
+        rawPages = pages.map(toPage);
+      } catch (err) {
+        console.error("[Storage] Mongo getAllPagesAdmin error:", err);
+      }
+    } else {
+      const store = ensureLocalStore();
+      rawPages = store.pages || [];
+    }
+
+    // Attach owner info, order count
+    const users = await AppStorage.getAllUsersAdmin();
+    const allOrders = await AppStorage.getAllOrdersAdmin();
+
+    return rawPages.map((page) => {
+      const owner = users.find(
+        (u) => u.id === page.userId || u._id === page.userId
+      );
+      const ordersCount = allOrders.filter((o) => o.pageId === page.pageId).length;
+
+      return {
+        ...page,
+        pageAccessToken: maskToken(page.pageAccessToken),
+        ownerName: owner?.name || (page.userId === "user_demo" ? "Demo Merchant" : "Merchant"),
+        ownerEmail: owner?.email || (page.userId === "user_demo" ? "demo@autopage.io" : "Unknown"),
+        ordersCount,
+      };
+    });
+  }
+
+  static async getAllOrdersAdmin(): Promise<IOrder[]> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const orders = await Order.find().sort({ createdAt: -1 });
+        return orders.map(toOrder);
+      } catch (err) {
+        console.error("[Storage] Mongo getAllOrdersAdmin error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    return [...(store.orders || [])].sort(
+      (a, b) =>
+        new Date(b.createdAt || 0).getTime() -
+        new Date(a.createdAt || 0).getTime()
+    );
+  }
+
+  static async getGlobalAutomationLogsAdmin(filter: {
+    pageId?: string;
+    eventType?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+  }): Promise<IAutomationLog[]> {
+    const limit = filter.limit || 100;
+    const hasMongo = await checkMongoConnection();
+
+    if (hasMongo) {
+      try {
+        const query: Record<string, unknown> = {};
+        if (filter.pageId && filter.pageId !== "all") {
+          query.pageId = filter.pageId;
+        }
+        if (filter.eventType && filter.eventType !== "all") {
+          query.eventType = filter.eventType;
+        }
+        if (filter.status && filter.status !== "all") {
+          query.status = filter.status;
+        }
+        if (filter.search && filter.search.trim()) {
+          const s = filter.search.trim();
+          query.$or = [
+            { senderName: { $regex: s, $options: "i" } },
+            { inputMessage: { $regex: s, $options: "i" } },
+            { replyMessage: { $regex: s, $options: "i" } },
+            { eventId: { $regex: s, $options: "i" } },
+          ];
+        }
+
+        const logs = await AutomationLog.find(query)
+          .sort({ createdAt: -1 })
+          .limit(limit);
+        return logs.map(toLog);
+      } catch (err) {
+        console.error("[Storage] Mongo getGlobalAutomationLogsAdmin error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    let logs = store.logs || [];
+
+    if (filter.pageId && filter.pageId !== "all") {
+      logs = logs.filter((l) => l.pageId === filter.pageId);
+    }
+    if (filter.eventType && filter.eventType !== "all") {
+      logs = logs.filter((l) => l.eventType === filter.eventType);
+    }
+    if (filter.status && filter.status !== "all") {
+      logs = logs.filter((l) => l.status === filter.status);
+    }
+    if (filter.search && filter.search.trim()) {
+      const s = filter.search.toLowerCase().trim();
+      logs = logs.filter(
+        (l) =>
+          l.senderName?.toLowerCase().includes(s) ||
+          l.inputMessage?.toLowerCase().includes(s) ||
+          l.replyMessage?.toLowerCase().includes(s) ||
+          l.eventId?.toLowerCase().includes(s)
+      );
+    }
+
+    return [...logs]
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt || 0).getTime() -
+          new Date(a.createdAt || 0).getTime()
+      )
+      .slice(0, limit);
+  }
+
+  static async clearAutomationLogsAdmin(): Promise<number> {
+    const hasMongo = await checkMongoConnection();
+    if (hasMongo) {
+      try {
+        const res = await AutomationLog.deleteMany({});
+        return res.deletedCount || 0;
+      } catch (err) {
+        console.error("[Storage] Mongo clearAutomationLogsAdmin error:", err);
+      }
+    }
+
+    const store = ensureLocalStore();
+    const count = store.logs?.length || 0;
+    store.logs = [];
+    writeLocalStore(store);
+    return count;
+  }
+
+  static async getAdminSystemStats(): Promise<IAdminStats> {
+    const isConnected = await checkMongoConnection();
+    const startTime = Date.now();
+
+    let totalUsers = 0;
+    let totalMerchants = 0;
+    let totalAdmins = 0;
+    let totalPages = 0;
+    let totalActivePages = 0;
+    let totalWebhookSubscribed = 0;
+    let totalOrders = 0;
+    let totalGmv = 0;
+    let totalLogs = 0;
+    let todayLogs = 0;
+    let totalPosts = 0;
+    let publishedPosts = 0;
+
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    if (isConnected) {
+      try {
+        const [
+          uCount,
+          pDocs,
+          oDocs,
+          lCount,
+          todayLCount,
+          postDocs,
+        ] = await Promise.all([
+          User.find({}, "role"),
+          ConnectedPage.find({}, "autoReplyEnabled isWebhookSubscribed"),
+          Order.find({}, "totalAmount status"),
+          AutomationLog.countDocuments(),
+          AutomationLog.countDocuments({ createdAt: { $gte: oneDayAgo } }),
+          ScheduledPost.find({}, "status"),
+        ]);
+
+        totalAdmins = uCount.filter((u) => u.role === "admin").length + 1;
+        totalMerchants = uCount.filter((u) => u.role !== "admin").length + 1;
+        totalUsers = totalAdmins + totalMerchants;
+
+        totalPages = pDocs.length;
+        totalActivePages = pDocs.filter((p) => p.autoReplyEnabled).length;
+        totalWebhookSubscribed = pDocs.filter((p) => p.isWebhookSubscribed).length;
+
+        totalOrders = oDocs.length;
+        totalGmv = oDocs.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
+
+        totalLogs = lCount;
+        todayLogs = todayLCount;
+
+        totalPosts = postDocs.length;
+        publishedPosts = postDocs.filter((p) => p.status === "published").length;
+      } catch (err) {
+        console.error("[Storage] getAdminSystemStats mongo calculation error:", err);
+      }
+    } else {
+      const store = ensureLocalStore();
+      const users = store.users || [];
+      totalAdmins = users.filter((u) => u.role === "admin").length + 1;
+      totalMerchants = users.filter((u) => u.role !== "admin").length + 1;
+      totalUsers = totalAdmins + totalMerchants;
+
+      const pages = store.pages || [];
+      totalPages = pages.length;
+      totalActivePages = pages.filter((p) => p.autoReplyEnabled).length;
+      totalWebhookSubscribed = pages.filter((p) => p.isWebhookSubscribed).length;
+
+      const orders = store.orders || [];
+      totalOrders = orders.length;
+      totalGmv = orders.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
+
+      const logs = store.logs || [];
+      totalLogs = logs.length;
+      todayLogs = logs.filter(
+        (l) => new Date(l.createdAt || 0) >= oneDayAgo
+      ).length;
+
+      const posts = store.posts || [];
+      totalPosts = posts.length;
+      publishedPosts = posts.filter((p) => p.status === "published").length;
+    }
+
+    const pingMs = Math.max(1, Date.now() - startTime);
+    const verifyToken =
+      process.env.META_WEBHOOK_VERIFY_TOKEN || "fb_auto_verify_token_secure_2025";
+    const appSecret = process.env.META_APP_SECRET || "";
+
+    return {
+      totalUsers,
+      totalMerchants,
+      totalAdmins,
+      totalPages,
+      totalActivePages,
+      totalWebhookSubscribed,
+      totalOrders,
+      totalGmv,
+      totalLogs,
+      todayLogs,
+      totalPosts,
+      publishedPosts,
+      databaseStatus: {
+        connected: isConnected,
+        mode: isConnected ? "mongodb" : "local_json",
+        uriMasked: maskMongoUri(getMongoUri()),
+        pingMs,
+      },
+      metaStatus: {
+        webhookConfigured: Boolean(verifyToken),
+        appSecretConfigured: Boolean(appSecret && appSecret.trim().length > 0),
+        apiVersion: "v21.0",
+        verifyToken,
+      },
+      systemUptime: Math.floor((Date.now() - SERVER_START_TIME) / 1000),
+      emergencyPaused: isSystemEmergencyPaused,
     };
   }
 }

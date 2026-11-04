@@ -14,6 +14,7 @@ import {
   Radio,
   ShoppingBag,
   Activity,
+  ShieldCheck,
 } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 import { cn } from "@/lib/utils";
@@ -61,6 +62,8 @@ export function Sidebar() {
   const pathname = usePathname();
   const activePage = useAppStore((state) => state.activePage);
   const setConnectModalOpen = useAppStore((state) => state.setConnectModalOpen);
+  const currentUser = useAppStore((state) => state.currentUser);
+  const isAdmin = currentUser?.role === "admin";
 
   return (
     <aside className="w-64 border-r border-white/10 bg-slate-950/80 backdrop-blur-2xl flex flex-col h-screen sticky top-0 shrink-0 z-30">
@@ -82,45 +85,79 @@ export function Sidebar() {
       </div>
 
       {/* Navigation Links */}
-      <div className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        <div className="px-3 pb-2 text-[10px] font-semibold tracking-wider uppercase text-slate-400 font-mono">
-          Platform
+      <div className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+        <div>
+          <div className="px-3 pb-2 text-[10px] font-semibold tracking-wider uppercase text-slate-400 font-mono">
+            Platform
+          </div>
+
+          <div className="space-y-1">
+            {NAV_ITEMS.map((item) => {
+              const isActive = pathname === item.href;
+              const Icon = item.icon;
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center justify-between px-3.5 py-2 rounded-xl text-sm font-medium transition-all group",
+                    isActive
+                      ? "bg-blue-600/10 text-white border border-blue-500/20 shadow-glow"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon
+                      className={cn(
+                        "w-4 h-4 transition-colors",
+                        isActive
+                          ? "text-blue-400"
+                          : "text-slate-400 group-hover:text-slate-300"
+                      )}
+                    />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge && (
+                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 font-semibold border border-blue-500/20">
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
         </div>
 
-        {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
-          const Icon = item.icon;
+        {/* Dedicated System Administration Section */}
+        <div className="pt-2 border-t border-white/5">
+          <div className="px-3 pb-2 text-[10px] font-semibold tracking-wider uppercase text-indigo-400 font-mono flex items-center justify-between">
+            <span>Administration</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-normal">
+              Special
+            </span>
+          </div>
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all group",
-                isActive
-                  ? "bg-blue-600/10 text-white border border-blue-500/20 shadow-glow"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <Icon
-                  className={cn(
-                    "w-4 h-4 transition-colors",
-                    isActive
-                      ? "text-blue-400"
-                      : "text-slate-400 group-hover:text-slate-300"
-                  )}
-                />
-                <span>{item.label}</span>
+          <Link
+            href="/admin"
+            className={cn(
+              "flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all group",
+              pathname.startsWith("/admin")
+                ? "bg-gradient-to-r from-indigo-600/20 via-purple-600/20 to-blue-600/20 text-white border border-indigo-500/30 shadow-[0_0_15px_rgba(99,102,241,0.25)]"
+                : "text-indigo-300/80 hover:text-white hover:bg-indigo-500/10 border border-indigo-500/15"
+            )}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-6 h-6 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-300" />
               </div>
-              {item.badge && (
-                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 font-semibold border border-blue-500/20">
-                  {item.badge}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+              <span className="tracking-tight">Admin Panel</span>
+            </div>
+            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded-md bg-gradient-to-r from-indigo-500/30 to-purple-500/30 text-indigo-200 font-bold border border-indigo-400/30">
+              Control
+            </span>
+          </Link>
+        </div>
       </div>
 
       {/* Current Active Tenant Mini Card & Add Page Button */}
