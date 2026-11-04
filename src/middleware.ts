@@ -18,6 +18,7 @@ export async function middleware(req: NextRequest) {
   if (
     pathname === "/login" ||
     pathname === "/register" ||
+    pathname === "/welcome" ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/webhook") ||
     pathname.startsWith("/api/cron") ||
@@ -26,8 +27,10 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 3. Check auth_token cookie
-  const token = req.cookies.get("auth_token")?.value;
+  // 3. Check autopage_session cookie (with auth_token fallback)
+  const token =
+    req.cookies.get("autopage_session")?.value ||
+    req.cookies.get("auth_token")?.value;
   const user = token ? await verifyJwt(token) : null;
 
   if (!user) {
@@ -37,6 +40,11 @@ export async function middleware(req: NextRequest) {
         { error: "Authentication required. Please log in." },
         { status: 401 }
       );
+    }
+
+    // For the root landing page, show the /welcome SaaS page to unauthenticated visitors
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL("/welcome", req.url));
     }
 
     // Redirect dashboard pages to /login

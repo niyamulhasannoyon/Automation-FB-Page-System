@@ -8,6 +8,7 @@ export const DEMO_USER: UserSession = {
   email: "demo@autopage.io",
   name: "Demo Merchant (Live)",
   role: "merchant",
+  plan: "pro",
 };
 
 export const ADMIN_USER: UserSession = {
@@ -15,6 +16,7 @@ export const ADMIN_USER: UserSession = {
   email: "admin@autopage.io",
   name: "Super Admin (Owner)",
   role: "admin",
+  plan: "agency",
 };
 
 /**
@@ -153,6 +155,7 @@ export async function verifyJwt(token: string): Promise<UserSession | null> {
       email: claims.email,
       name: claims.name,
       role: claims.role || "merchant",
+      plan: claims.plan || (claims.role === "admin" ? "agency" : "pro"),
     };
   } catch (err) {
     console.warn("[Auth] Token verification failed:", err);
@@ -181,8 +184,10 @@ export async function verifyPassword(
 
   // Handle plain demo and admin password checks
   if (
-    (storedHash === "demo123456" && password === "demo123456") ||
-    (storedHash === "admin123456" && password === "admin123456")
+    ((storedHash === "demo1234" || storedHash === "demo123456") &&
+      (password === "demo1234" || password === "demo123456")) ||
+    ((storedHash === "admin123456" || storedHash === "demo1234") &&
+      (password === "admin123456" || password === "demo1234"))
   ) {
     return true;
   }
@@ -215,9 +220,11 @@ export async function getSessionUser(req: Request): Promise<UserSession | null> 
       if (user) return user;
     }
 
-    // 2. Check cookie header
+    // 2. Check cookie header (check autopage_session first, fallback to auth_token)
     const cookieHeader = req.headers.get("cookie") || "";
-    const match = cookieHeader.match(/(?:^|;\s*)auth_token=([^;]+)/);
+    const match =
+      cookieHeader.match(/(?:^|;\s*)autopage_session=([^;]+)/) ||
+      cookieHeader.match(/(?:^|;\s*)auth_token=([^;]+)/);
     if (match && match[1]) {
       const token = decodeURIComponent(match[1]);
       const user = await verifyJwt(token);

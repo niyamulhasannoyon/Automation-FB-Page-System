@@ -13,6 +13,7 @@ export interface IAutomationRule {
 export interface IConnectedPage {
   _id?: string;
   userId?: string;
+  ownerId?: string;
   pageId: string;
   pageName: string;
   pagePicture?: string;
@@ -160,6 +161,8 @@ export interface IUser {
   email: string;
   name: string;
   password?: string;
+  passwordHash?: string;
+  plan?: "free" | "pro" | "agency";
   role: "admin" | "merchant";
   createdAt?: string | Date;
   updatedAt?: string | Date;
@@ -170,6 +173,7 @@ export interface UserSession {
   email: string;
   name: string;
   role: "admin" | "merchant";
+  plan?: "free" | "pro" | "agency";
 }
 
 // Automation Live Logs & Deduplication Types
@@ -185,6 +189,7 @@ export type AutomationEventStatus = "success" | "failed" | "duplicate";
 
 export interface IAutomationLog {
   _id?: string;
+  id?: string;
   pageId: string;
   eventId: string; // comment_id or message.mid for deduplication
   eventType: AutomationEventType;
@@ -192,6 +197,8 @@ export interface IAutomationLog {
   senderName?: string;
   inputMessage: string;
   replyMessage: string;
+  incomingText?: string;
+  replySent?: string;
   handledBy: string;
   status: AutomationEventStatus;
   error?: string;

@@ -17,7 +17,10 @@ export async function POST(req: NextRequest) {
     const cleanEmail = String(email).trim().toLowerCase();
 
     // Check Super Admin credentials shortcut
-    if (cleanEmail === "admin@autopage.io" && password === "admin123456") {
+    if (
+      cleanEmail === "admin@autopage.io" &&
+      (password === "demo1234" || password === "admin123456")
+    ) {
       const token = await signJwt(ADMIN_USER);
       const res = NextResponse.json(
         {
@@ -26,6 +29,13 @@ export async function POST(req: NextRequest) {
         },
         { status: 200 }
       );
+      res.cookies.set("autopage_session", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60,
+        path: "/",
+      });
       res.cookies.set("auth_token", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -37,7 +47,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Check Demo credentials shortcut
-    if (cleanEmail === "demo@autopage.io" && password === "demo123456") {
+    if (
+      cleanEmail === "demo@autopage.io" &&
+      (password === "demo1234" || password === "demo123456")
+    ) {
       const token = await signJwt(DEMO_USER);
       const res = NextResponse.json(
         {
@@ -46,6 +59,13 @@ export async function POST(req: NextRequest) {
         },
         { status: 200 }
       );
+      res.cookies.set("autopage_session", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60,
+        path: "/",
+      });
       res.cookies.set("auth_token", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -64,7 +84,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const isMatch = await verifyPassword(String(password), user.password);
+    const isMatch = await verifyPassword(
+      String(password),
+      user.passwordHash || user.password
+    );
     if (!isMatch) {
       return NextResponse.json(
         { error: "Invalid email or password." },
@@ -77,6 +100,7 @@ export async function POST(req: NextRequest) {
       email: user.email,
       name: user.name,
       role: user.role || "merchant",
+      plan: user.plan || "pro",
     };
 
     const token = await signJwt(sessionPayload);
@@ -89,6 +113,13 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     );
 
+    res.cookies.set("autopage_session", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60,
+      path: "/",
+    });
     res.cookies.set("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

@@ -42,6 +42,8 @@ export async function POST(req: NextRequest) {
       email: cleanEmail,
       name: String(name).trim(),
       password: hashedPassword,
+      passwordHash: hashedPassword,
+      plan: (body.plan as "free" | "pro" | "agency") || "pro",
       role: "merchant",
     });
 
@@ -50,6 +52,7 @@ export async function POST(req: NextRequest) {
       email: newUser.email,
       name: newUser.name,
       role: newUser.role,
+      plan: newUser.plan || "pro",
     };
 
     const token = await signJwt(sessionPayload);
@@ -62,7 +65,14 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
 
-    // Set HTTP-only cookie
+    // Set HTTP-only cookies
+    res.cookies.set("autopage_session", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+      path: "/",
+    });
     res.cookies.set("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

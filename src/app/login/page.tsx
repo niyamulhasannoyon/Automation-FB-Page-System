@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Zap,
@@ -242,19 +243,29 @@ export default function LoginPage() {
           </form>
 
           {/* Switch Register/Login */}
-          <div className="text-center pt-2 border-t border-white/5">
-            <button
-              type="button"
-              onClick={() => {
-                setIsRegister(!isRegister);
-                setError(null);
-              }}
-              className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              {isRegister
-                ? "Already have an account? Sign in here"
-                : "Need a new merchant account? Create one"}
-            </button>
+          <div className="text-center pt-2 border-t border-white/5 space-y-1.5">
+            <div>
+              <Link
+                href="/register"
+                className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
+              >
+                Need a new merchant account? Register here →
+              </Link>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegister(!isRegister);
+                  setError(null);
+                }}
+                className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+              >
+                {isRegister
+                  ? "Already have an account? Sign in here"
+                  : "Or toggle quick registration on this page"}
+              </button>
+            </div>
           </div>
         </div>
 

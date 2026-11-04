@@ -15,12 +15,21 @@ const UserSchema = new Schema<UserDocument>(
     },
     password: {
       type: String,
-      required: true,
+      required: false,
+    },
+    passwordHash: {
+      type: String,
+      required: false,
     },
     name: {
       type: String,
       required: true,
       trim: true,
+    },
+    plan: {
+      type: String,
+      enum: ["free", "pro", "agency"],
+      default: "pro",
     },
     role: {
       type: String,

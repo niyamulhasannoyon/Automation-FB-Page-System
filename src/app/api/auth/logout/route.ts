@@ -6,6 +6,14 @@ export async function POST(req: NextRequest) {
     { status: 200 }
   );
 
+  res.cookies.set("autopage_session", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    expires: new Date(0),
+    path: "/",
+  });
+
   res.cookies.set("auth_token", "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

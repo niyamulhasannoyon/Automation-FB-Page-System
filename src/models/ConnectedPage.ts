@@ -29,6 +29,12 @@ const ConnectedPageSchema = new Schema<ConnectedPageDocument>(
       default: "user_demo",
       trim: true,
     },
+    ownerId: {
+      type: String,
+      index: true,
+      default: "user_demo",
+      trim: true,
+    },
     pageId: {
       type: String,
       required: true,

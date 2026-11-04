@@ -1,7 +1,7 @@
 import mongoose, { Schema, Model, Document } from "mongoose";
 import { IAutomationLog } from "@/types";
 
-export interface AutomationLogDocument extends Omit<IAutomationLog, "_id">, Document {}
+export interface AutomationLogDocument extends Omit<IAutomationLog, "_id" | "id">, Document {}
 
 const AutomationLogSchema = new Schema<AutomationLogDocument>(
   {
@@ -34,7 +34,15 @@ const AutomationLogSchema = new Schema<AutomationLogDocument>(
       type: String,
       default: "",
     },
+    incomingText: {
+      type: String,
+      default: "",
+    },
     replyMessage: {
+      type: String,
+      default: "",
+    },
+    replySent: {
       type: String,
       default: "",
     },

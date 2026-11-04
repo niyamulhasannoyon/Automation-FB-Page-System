@@ -7,7 +7,7 @@ import {
   parseOrderMessage,
   parseStockOrPriceInquiry,
   formatOrderConfirmationReply,
-} from "@/lib/order-engine";
+} from "@/lib/commerce-engine";
 import { generateAiReply } from "@/lib/ai-reply";
 import { MetaWebhookPayload } from "@/types";
 

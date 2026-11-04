@@ -12,6 +12,14 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     );
 
+    res.cookies.set("autopage_session", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60,
+      path: "/",
+    });
+
     res.cookies.set("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -34,6 +42,14 @@ export async function GET(req: NextRequest) {
   const token = await signJwt(DEMO_USER);
   const redirectUrl = new URL("/", req.url);
   const res = NextResponse.redirect(redirectUrl);
+
+  res.cookies.set("autopage_session", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60,
+    path: "/",
+  });
 
   res.cookies.set("auth_token", token, {
     httpOnly: true,

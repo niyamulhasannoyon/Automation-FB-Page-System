@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 import connectToDatabase, { getMongoUri, maskMongoUri } from "./db";
 import ConnectedPage from "@/models/ConnectedPage";
 import ScheduledPost from "@/models/ScheduledPost";
@@ -31,8 +32,15 @@ interface LocalStoreData {
   logs: IAutomationLog[];
 }
 
-const DATA_DIR = path.join(process.cwd(), ".data");
-const STORE_PATH = path.join(DATA_DIR, "db.json");
+const isServerless =
+  Boolean(process.env.VERCEL) ||
+  Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+  (process.env.NODE_ENV === "production" && !process.env.LOCAL_DEV);
+
+const DATA_DIR = isServerless ? os.tmpdir() : path.join(process.cwd(), ".data");
+const STORE_PATH = isServerless
+  ? path.join(os.tmpdir(), "autopage-db.json")
+  : path.join(DATA_DIR, "db.json");
 
 let isMongoAvailable: boolean | null = null;
 let lastMongoCheckTime = 0;
@@ -50,10 +58,12 @@ function toPage(doc: unknown): IConnectedPage {
       ? d.toObject()
       : (doc as Record<string, unknown>);
   const rawToken = String(obj?.pageAccessToken || "");
+  const ownerId = String(obj?.ownerId || obj?.userId || "user_demo");
   return {
     ...(obj as unknown as IConnectedPage),
     _id: obj?._id ? String(obj._id) : undefined,
-    userId: obj?.userId ? String(obj.userId) : "user_demo",
+    userId: ownerId,
+    ownerId: ownerId,
     pageAccessToken: decryptToken(rawToken),
   };
 }
@@ -71,6 +81,7 @@ function toUser(doc: unknown): IUser {
     ...(obj as unknown as IUser),
     _id: obj?._id ? String(obj._id) : undefined,
     id: obj?._id ? String(obj._id) : (obj?.id as string),
+    plan: (obj?.plan as "free" | "pro" | "agency") || (obj?.role === "admin" ? "agency" : "pro"),
   };
 }
 
@@ -86,6 +97,9 @@ function toLog(doc: unknown): IAutomationLog {
   return {
     ...(obj as unknown as IAutomationLog),
     _id: obj?._id ? String(obj._id) : undefined,
+    id: obj?._id ? String(obj._id) : (obj?.id as string),
+    incomingText: String(obj?.incomingText || obj?.inputMessage || ""),
+    replySent: String(obj?.replySent || obj?.replyMessage || ""),
   };
 }
 
@@ -246,12 +260,27 @@ export const SEED_ORDERS: IOrder[] = [
   },
 ];
 
+export const SEED_ADMIN: IUser = {
+  _id: "user_admin",
+  id: "user_admin",
+  email: "admin@autopage.io",
+  name: "Super Admin",
+  password: "demo1234",
+  passwordHash: "demo1234",
+  plan: "agency",
+  role: "admin",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
 export const SEED_USER: IUser = {
   _id: "user_demo",
   id: "user_demo",
   email: "demo@autopage.io",
   name: "Demo Merchant (Live)",
-  password: "demo123456",
+  password: "demo1234",
+  passwordHash: "demo1234",
+  plan: "pro",
   role: "merchant",
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -260,26 +289,32 @@ export const SEED_USER: IUser = {
 export const SEED_LOGS: IAutomationLog[] = [
   {
     _id: "log_seed_1",
+    id: "log_seed_1",
     pageId: "10928491829384",
     eventId: "mid_demo_1001",
     eventType: "order",
     senderId: "demo_psid_101",
     senderName: "রাকিব হাসান",
     inputMessage: "আমার নাম রাকিব হাসান, ফোন 01712345678, ধানমন্ডি ৪/এ, ১টা পাঞ্জাবি লাগবে",
-    replyMessage: "🎉 ধন্যবাদ রাকিব হাসান! আপনার অর্ডারটি (ORD-1001) সফলভাবে কনফার্ম করা হয়েছে!",
+    incomingText: "আমার নাম রাকিব হাসান, ফোন 01712345678, ধানমন্ডি ৪/এ, ১টা পাঞ্জাবি লাগবে",
+    replyMessage: "🎉 ধন্যবাদ রাকিব হাসান! আপনার অর্ডারটি (#ORD-1001) সফলভাবে কনফার্ম করা হয়েছে!",
+    replySent: "🎉 ধন্যবাদ রাকিব হাসান! আপনার অর্ডারটি (#ORD-1001) সফলভাবে কনফার্ম করা হয়েছে!",
     handledBy: "Layer 1: Auto Order Extractor",
     status: "success",
     createdAt: new Date(Date.now() - 7200000).toISOString(),
   },
   {
     _id: "log_seed_2",
+    id: "log_seed_2",
     pageId: "10928491829384",
     eventId: "mid_demo_1002",
     eventType: "stock_inquiry",
     senderId: "demo_psid_102",
     senderName: "তানভির আহমেদ",
     inputMessage: "ইয়ারবাডস এর দাম কত এবং স্টক আছে?",
+    incomingText: "ইয়ারবাডস এর দাম কত এবং স্টক আছে?",
     replyMessage: "আমাদের \"Wireless Earbuds Pro\" স্টকে আছে (8 পিস এভেইলেবল) এবং এর মূল্য ৳2,450 ✅",
+    replySent: "আমাদের \"Wireless Earbuds Pro\" স্টকে আছে (8 পিস এভেইলেবল) এবং এর মূল্য ৳2,450 ✅",
     handledBy: "Layer 2: Real-Time Stock & Price Checker",
     status: "success",
     createdAt: new Date(Date.now() - 3600000).toISOString(),
@@ -313,8 +348,17 @@ function ensureLocalStore(): LocalStoreData {
         modified = true;
       }
       if (!Array.isArray(parsed.users) || parsed.users.length === 0) {
-        parsed.users = [SEED_USER];
+        parsed.users = [SEED_ADMIN, SEED_USER];
         modified = true;
+      } else {
+        if (!parsed.users.some((u: IUser) => u.email === "admin@autopage.io")) {
+          parsed.users.unshift(SEED_ADMIN);
+          modified = true;
+        }
+        if (!parsed.users.some((u: IUser) => u.email === "demo@autopage.io")) {
+          parsed.users.push(SEED_USER);
+          modified = true;
+        }
       }
       if (!Array.isArray(parsed.logs)) {
         parsed.logs = [...SEED_LOGS];
@@ -336,6 +380,7 @@ function ensureLocalStore(): LocalStoreData {
     pages: [
       {
         userId: "user_demo",
+        ownerId: "user_demo",
         pageId: "10928491829384",
         pageName: "TechFlow Digital (Live Demo)",
         pagePicture:
@@ -413,7 +458,7 @@ function ensureLocalStore(): LocalStoreData {
     ],
     products: SEED_PRODUCTS,
     orders: SEED_ORDERS,
-    users: [SEED_USER],
+    users: [SEED_ADMIN, SEED_USER],
     logs: [...SEED_LOGS],
   };
 
@@ -481,8 +526,10 @@ export class AppStorage {
         const filter = userId
           ? {
               $or: [
+                { ownerId: userId },
                 { userId },
                 { userId: "user_demo" },
+                { ownerId: "user_demo" },
                 { userId: { $exists: false } },
               ],
             }
@@ -499,8 +546,10 @@ export class AppStorage {
       .filter((p) => {
         if (!userId) return true;
         return (
+          p.ownerId === userId ||
           p.userId === userId ||
           p.userId === "user_demo" ||
+          p.ownerId === "user_demo" ||
           !p.userId
         );
       })
@@ -541,6 +590,8 @@ export class AppStorage {
       ? encryptToken(pageData.pageAccessToken)
       : undefined;
 
+    const owner = pageData.ownerId || pageData.userId || "user_demo";
+
     const hasMongo = await checkMongoConnection();
     if (hasMongo) {
       try {
@@ -548,7 +599,8 @@ export class AppStorage {
           { pageId: pageData.pageId },
           {
             $set: {
-              userId: pageData.userId || "user_demo",
+              userId: owner,
+              ownerId: owner,
               pageName: pageData.pageName,
               pagePicture: pageData.pagePicture,
               ...(tokenToStore ? { pageAccessToken: tokenToStore } : {}),
@@ -579,7 +631,8 @@ export class AppStorage {
       const existing = store.pages[existingIndex];
       const updated: IConnectedPage = {
         ...existing,
-        userId: pageData.userId || existing.userId || "user_demo",
+        userId: owner,
+        ownerId: owner,
         pageName: pageData.pageName,
         pagePicture: pageData.pagePicture ?? existing.pagePicture,
         pageAccessToken: pageData.pageAccessToken ?? existing.pageAccessToken,
@@ -593,7 +646,8 @@ export class AppStorage {
     } else {
       const newPage: IConnectedPage = {
         _id: `page_${Date.now()}`,
-        userId: pageData.userId || "user_demo",
+        userId: owner,
+        ownerId: owner,
         pageId: pageData.pageId,
         pageName: pageData.pageName,
         pagePicture: pageData.pagePicture || "",
@@ -1239,17 +1293,22 @@ export class AppStorage {
   static async createUser(userData: {
     email: string;
     name: string;
-    password: string;
+    password?: string;
+    passwordHash?: string;
+    plan?: "free" | "pro" | "agency";
     role?: "admin" | "merchant";
   }): Promise<IUser> {
     const cleanEmail = userData.email.toLowerCase().trim();
+    const pass = userData.passwordHash || userData.password || "";
     const hasMongo = await checkMongoConnection();
     if (hasMongo) {
       try {
         const created = await User.create({
           email: cleanEmail,
           name: userData.name.trim(),
-          password: userData.password,
+          password: pass,
+          passwordHash: pass,
+          plan: userData.plan || "pro",
           role: userData.role || "merchant",
         });
         return toUser(created);
@@ -1264,7 +1323,9 @@ export class AppStorage {
       id: `user_${Date.now()}`,
       email: cleanEmail,
       name: userData.name.trim(),
-      password: userData.password,
+      password: pass,
+      passwordHash: pass,
+      plan: userData.plan || "pro",
       role: userData.role || "merchant",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1303,12 +1364,17 @@ export class AppStorage {
     eventType: AutomationEventType;
     senderId?: string;
     senderName?: string;
-    inputMessage: string;
-    replyMessage: string;
-    handledBy: string;
+    inputMessage?: string;
+    incomingText?: string;
+    replyMessage?: string;
+    replySent?: string;
+    handledBy?: string;
     status: AutomationEventStatus;
     error?: string;
   }): Promise<IAutomationLog> {
+    const inputMsg = logData.inputMessage || logData.incomingText || "";
+    const replyMsg = logData.replyMessage || logData.replySent || "";
+
     const hasMongo = await checkMongoConnection();
     if (hasMongo) {
       try {
@@ -1318,8 +1384,10 @@ export class AppStorage {
           eventType: logData.eventType,
           senderId: logData.senderId || "",
           senderName: logData.senderName || "Customer",
-          inputMessage: logData.inputMessage || "",
-          replyMessage: logData.replyMessage || "",
+          inputMessage: inputMsg,
+          incomingText: inputMsg,
+          replyMessage: replyMsg,
+          replySent: replyMsg,
           handledBy: logData.handledBy || "System",
           status: logData.status || "success",
           error: logData.error || "",
@@ -1333,13 +1401,16 @@ export class AppStorage {
     const store = ensureLocalStore();
     const newLog: IAutomationLog = {
       _id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       pageId: logData.pageId,
       eventId: logData.eventId,
       eventType: logData.eventType,
       senderId: logData.senderId || "",
       senderName: logData.senderName || "Customer",
-      inputMessage: logData.inputMessage || "",
-      replyMessage: logData.replyMessage || "",
+      inputMessage: inputMsg,
+      incomingText: inputMsg,
+      replyMessage: replyMsg,
+      replySent: replyMsg,
       handledBy: logData.handledBy || "System",
       status: logData.status || "success",
       error: logData.error || "",
