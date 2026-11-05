@@ -474,6 +474,17 @@ export default function WelcomeLandingPage() {
           <span className="font-bold text-slate-300">AutoPage SaaS Platform</span>
         </div>
         <p>© 2026 AutoPage System. 100% Commercial, Multi-Tenant Facebook Social Commerce Platform.</p>
+        <div className="flex items-center justify-center gap-6 mt-4">
+          <Link href="/privacy" className="hover:text-slate-300 transition-colors">
+            Privacy Policy
+          </Link>
+          <Link href="/terms" className="hover:text-slate-300 transition-colors">
+            Terms of Service
+          </Link>
+          <Link href="/data-deletion" className="hover:text-slate-300 transition-colors">
+            User Data Deletion
+          </Link>
+        </div>
       </footer>
     </div>
   );

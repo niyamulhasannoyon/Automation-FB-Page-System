@@ -249,6 +249,20 @@ export default function RegisterPage() {
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span>Zero-Dependency JWT & AES-256 Encrypted Storage</span>
           </div>
+
+          <div className="flex items-center justify-center gap-4 text-xs text-slate-500 pt-2">
+            <Link href="/privacy" className="hover:text-slate-300 transition-colors">
+              Privacy Policy
+            </Link>
+            <span>•</span>
+            <Link href="/terms" className="hover:text-slate-300 transition-colors">
+              Terms of Service
+            </Link>
+            <span>•</span>
+            <Link href="/data-deletion" className="hover:text-slate-300 transition-colors">
+              Data Deletion
+            </Link>
+          </div>
         </div>
       </div>
     </div>

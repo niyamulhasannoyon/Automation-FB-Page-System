@@ -274,6 +274,20 @@ export default function LoginPage() {
           <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
           <span>Encrypted with AES-256-GCM & JWT Session Authentication</span>
         </div>
+
+        <div className="flex items-center justify-center gap-4 text-xs text-slate-500 pt-1">
+          <Link href="/privacy" className="hover:text-slate-300 transition-colors">
+            Privacy Policy
+          </Link>
+          <span>•</span>
+          <Link href="/terms" className="hover:text-slate-300 transition-colors">
+            Terms of Service
+          </Link>
+          <span>•</span>
+          <Link href="/data-deletion" className="hover:text-slate-300 transition-colors">
+            Data Deletion
+          </Link>
+        </div>
       </div>
     </div>
   );
