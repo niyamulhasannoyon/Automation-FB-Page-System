@@ -12,7 +12,7 @@ import { generateAiReply } from "@/lib/ai-reply";
 import { MetaWebhookPayload } from "@/types";
 
 const VERIFY_TOKEN =
-  process.env.META_WEBHOOK_VERIFY_TOKEN || "fb_auto_verify_token_secure_2025";
+  process.env.META_WEBHOOK_VERIFY_TOKEN || "my_secret_token_9x7k2p8q1m4_safe";
 
 /**
  * Validates Meta x-hub-signature-256 header against the raw body using META_APP_SECRET

@@ -154,7 +154,7 @@ Create a `.env.local` file with the following variables:
 MONGODB_URI=mongodb://localhost:27017/fb_page_automation
 
 # Meta Webhook Configuration
-META_WEBHOOK_VERIFY_TOKEN=fb_auto_verify_token_secure_2025
+META_WEBHOOK_VERIFY_TOKEN=my_secret_token_9x7k2p8q1m4_safe
 
 # Secret to protect scheduled cron worker endpoint
 CRON_SECRET=cron_scheduler_secret_token_secure
@@ -177,7 +177,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 2. In the sidebar, navigate to **Webhooks** &gt; **Page**.
 3. Click **Edit Subscription**:
    - **Callback URL:** `https://your-domain.com/api/webhook` (or your active ngrok HTTPS URL for local development).
-   - **Verify Token:** Value of `META_WEBHOOK_VERIFY_TOKEN` (default: `fb_auto_verify_token_secure_2025`).
+   - **Verify Token:** Value of `META_WEBHOOK_VERIFY_TOKEN` (default: `my_secret_token_9x7k2p8q1m4_safe`).
 4. Subscribe to the following fields:
    - `feed`
    - `messages`

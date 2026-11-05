@@ -1872,7 +1872,7 @@ export class AppStorage {
 
     const pingMs = Math.max(1, Date.now() - startTime);
     const verifyToken =
-      process.env.META_WEBHOOK_VERIFY_TOKEN || "fb_auto_verify_token_secure_2025";
+      process.env.META_WEBHOOK_VERIFY_TOKEN || "my_secret_token_9x7k2p8q1m4_safe";
     const appSecret = process.env.META_APP_SECRET || "";
 
     return {

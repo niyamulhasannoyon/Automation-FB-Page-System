@@ -130,7 +130,7 @@ export default function SettingsPage() {
   const webhookUrl = `${appUrl}/api/webhook`;
   const verifyToken =
     process.env.NEXT_PUBLIC_META_WEBHOOK_VERIFY_TOKEN ||
-    "fb_auto_verify_token_secure_2025";
+    "my_secret_token_9x7k2p8q1m4_safe";
 
   // Load Database & AI Status
   const loadDatabaseStatus = async () => {
